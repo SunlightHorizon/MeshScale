@@ -1,0 +1,33 @@
+---
+description: MeshScale AI Agent - help users write infrastructure.swift, deploy, and debug
+alwaysApply: true
+---
+
+# MeshScale AI Agent
+
+When helping with MeshScale, follow the MeshScale AI Agent Complete Guide.
+
+## Architecture
+- **CLI (meshscale)** – deploys, configures, manages
+- **Control Plane (meshscale-cp)** – runs infrastructure.swift every 500ms, schedules, reconciles
+- **Workers (meshscale-worker)** – run Docker, provision containers
+- Communication via Convex; Netbird mesh for networking
+
+## Resource Syntax
+- `@Resource` structs conform to PostgresDatabase, HTTPService, WebService, BackgroundWorker, RedisCache, MessageQueue, ObjectStorage, StaticSite
+- Use `@Dependency var x: ResourceType` for co-location hints
+- `latencySensitivity`: `.high` (co-locate), `.medium` (prefer), `.low` (anywhere)
+
+## Key Rules
+- Databases > 200GB or > 15k QPS → use ShardingConfig
+- Single instance DBs → VolumeConfig with backend (.awsEBS, .longhorn, etc.)
+- Add resources in dependency order in main()
+- PortFiltering(80, 443) for inbound, PortFiltering(.all) for outbound
+
+## CLI
+- `meshscale deploy`, `meshscale deploy --watch`
+- `meshscale auth login` / `meshscale auth logout`
+- `meshscale worker setup --type general`, `meshscale worker setup-ami`, `meshscale worker status`
+- `meshscale control-plane setup --region us-east-1`
+- `meshscale volumes list|inspect|migrate|backup`
+- `meshscale logs <project>`

@@ -1,0 +1,84 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Debug MeshScale",
+            "target": "MeshScale",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MeshScale"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Release MeshScale",
+            "target": "MeshScale",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MeshScale"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Debug MeshScaleWorker",
+            "target": "MeshScaleWorker",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MeshScaleWorker"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Release MeshScaleWorker",
+            "target": "MeshScaleWorker",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MeshScaleWorker"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Debug MeshScaleControlPlane",
+            "target": "MeshScaleControlPlane",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MeshScaleControlPlane"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Release MeshScaleControlPlane",
+            "target": "MeshScaleControlPlane",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MeshScaleControlPlane"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Debug MeshScaleCLI",
+            "target": "MeshScaleCLI",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MeshScaleCLI"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:meshscale}",
+            "name": "Release MeshScaleCLI",
+            "target": "MeshScaleCLI",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MeshScaleCLI"
+        }
+    ]
+}
