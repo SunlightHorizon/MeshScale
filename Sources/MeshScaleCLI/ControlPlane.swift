@@ -15,8 +15,11 @@ extension MeshScaleCLI.ControlPlane {
     struct Start: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "start",
-            abstract: "Start the control plane in background"
+            abstract: "Start the control plane"
         )
+        
+        @Flag(name: .long, help: "Run in foreground and stream logs to this terminal")
+        var dev: Bool = false
         
         func run() throws {
             let service = "control-plane"
@@ -38,18 +41,26 @@ extension MeshScaleCLI.ControlPlane {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             
-            let logFile = ConfigManager.shared.getLogFile(for: service)
-            if !FileManager.default.fileExists(atPath: logFile.path) {
-                _ = FileManager.default.createFile(atPath: logFile.path, contents: nil)
+            if dev {
+                print("Starting control plane in dev mode (foreground)...")
+                process.standardOutput = FileHandle.standardOutput
+                process.standardError = FileHandle.standardError
+                try process.run()
+                process.waitUntilExit()
+            } else {
+                let logFile = ConfigManager.shared.getLogFile(for: service)
+                if !FileManager.default.fileExists(atPath: logFile.path) {
+                    _ = FileManager.default.createFile(atPath: logFile.path, contents: nil)
+                }
+                let handle = try FileHandle(forWritingTo: logFile)
+                process.standardOutput = handle
+                process.standardError = handle
+                
+                try process.run()
+                try ConfigManager.shared.savePid(process.processIdentifier, for: service)
+                print("✅ Control plane started (PID: \(process.processIdentifier))")
+                print("   Logs: \(logFile.path)")
             }
-            let handle = try FileHandle(forWritingTo: logFile)
-            process.standardOutput = handle
-            process.standardError = handle
-            
-            try process.run()
-            try ConfigManager.shared.savePid(process.processIdentifier, for: service)
-            print("✅ Control plane started (PID: \(process.processIdentifier))")
-            print("   Logs: \(logFile.path)")
         }
     }
     
