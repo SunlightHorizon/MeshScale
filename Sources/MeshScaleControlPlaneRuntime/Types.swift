@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Latency Sensitivity
 
-public enum LatencySensitivity {
+public enum LatencySensitivity: Codable, Sendable {
     case high    // Must be co-located with dependencies
     case medium  // Prefer co-location but not required
     case low     // Can be anywhere
@@ -10,7 +10,7 @@ public enum LatencySensitivity {
 
 // MARK: - Worker Types
 
-public enum WorkerType: String, Codable {
+public enum WorkerType: String, Codable, Sendable {
     case general        // APIs, frontends, workers
     case databaseHeavy  // Databases (high CPU/RAM/disk)
     case compute        // CPU-intensive tasks
@@ -113,6 +113,60 @@ public enum VolumeBackend {
 public enum ReclaimPolicy {
     case retain
     case delete
+}
+
+// MARK: - Desired State & Scheduling
+
+/// High-level kind of resource. This is derived from which
+/// resource protocol a type conforms to (database, HTTPService, etc.).
+public enum ResourceKind: String, Codable, Sendable {
+    case database
+    case cache
+    case httpService
+    case webService
+    case backgroundWorker
+    case staticSite
+    case objectStorage
+    case messageQueue
+}
+
+/// Desired resource description extracted from user `Resource` structs.
+/// This is the control plane's generic model, independent of Docker/Kubernetes.
+public struct DesiredResourceSpec: Codable, Sendable {
+    public let name: String
+    public let kind: ResourceKind
+    public let cpu: Int
+    public let memoryGB: Double
+    public let storageGB: Double?
+    public let replicas: Int
+    public let image: String?
+    public let env: [String: String]
+    public let ports: [Int]
+    public let latencySensitivity: LatencySensitivity
+    
+    public init(
+        name: String,
+        kind: ResourceKind,
+        cpu: Int,
+        memoryGB: Double,
+        storageGB: Double?,
+        replicas: Int,
+        image: String?,
+        env: [String: String],
+        ports: [Int],
+        latencySensitivity: LatencySensitivity
+    ) {
+        self.name = name
+        self.kind = kind
+        self.cpu = cpu
+        self.memoryGB = memoryGB
+        self.storageGB = storageGB
+        self.replicas = replicas
+        self.image = image
+        self.env = env
+        self.ports = ports
+        self.latencySensitivity = latencySensitivity
+    }
 }
 
 // MARK: - Sharding Configuration

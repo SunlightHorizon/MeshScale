@@ -8,6 +8,11 @@ import Foundation
 // MARK: - Resource Protocol
 
 public protocol Resource {
+    /// Resources are value types with a default initializer in
+    /// user infrastructure.swift (eg `struct API: HTTPService { ... }`).
+    /// This allows the control plane to instantiate them reflectively.
+    init()
+    
     var name: String { get }
     var latencySensitivity: LatencySensitivity { get }
 }
