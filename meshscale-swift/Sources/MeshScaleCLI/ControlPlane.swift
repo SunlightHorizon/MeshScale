@@ -23,9 +23,17 @@ extension MeshScaleCLI.ControlPlane {
         
         func run() throws {
             let service = "control-plane"
-            if let pid = ConfigManager.shared.loadPid(for: service),
-               ConfigManager.shared.isProcessRunning(pid) {
-                print("⚠️ Control plane already running (PID: \(pid))")
+            
+            if !dev {
+                if let pid = ConfigManager.shared.loadPid(for: service),
+                   ConfigManager.shared.isProcessRunning(pid) {
+                    print("⚠️ Control plane already running (PID: \(pid))")
+                    return
+                }
+            } else if let pid = ConfigManager.shared.loadPid(for: service),
+                      ConfigManager.shared.isProcessRunning(pid) {
+                print("❌ Background control plane running (PID: \(pid)) on port 8080.")
+                print("   Stop it first with 'meshscale control-plane stop', then run with '--dev' again.")
                 return
             }
             #if os(Windows)
