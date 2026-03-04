@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"name": "meshscale-ui",
+			"path": "."
+		},
+		{
+			"name": "shadcn-ui",
+			"path": "../shadcn-ui"
+		}
+	],
+	"settings": {
+		"typescript.autoClosingTags": false
+	}
+}
