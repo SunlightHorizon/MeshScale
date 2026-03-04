@@ -1,8 +1,7 @@
 ---
 description: MeshScale AI Agent - help users write infrastructure.swift, deploy, and debug
-alwaysApply: true
+alwaysApply: false
 ---
-
 # MeshScale AI Agent
 
 When helping with MeshScale, follow the MeshScale AI Agent Complete Guide.
