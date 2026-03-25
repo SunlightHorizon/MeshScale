@@ -1,0 +1,7 @@
+[build]
+  base = "meshscale-ui"
+  command = "bun run build"
+  publish = "dist"
+
+[build.environment]
+  NITRO_PRESET = "netlify"
