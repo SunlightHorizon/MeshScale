@@ -1,27 +1,22 @@
-import { createFileRoute } from "@tanstack/react-router";
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "../../components/ui/sidebar"
-import { AppSidebar } from "./components/sidebar/app-sidebar"
-import { ChartAreaInteractive } from "./components/content/chart-area-interactive"
-import { DataTable } from "./components/content/data-table"
-import { SectionCards } from "./components/content/section-cards"
-import { SiteHeader } from "./components/content/site-header"
-import { CostBreakdown } from "./components/content/cost-breakdown"
+import { createFileRoute } from '@tanstack/react-router'
+import { SidebarInset, SidebarProvider } from '../../components/ui/sidebar'
+import { AppSidebar } from './components/sidebar/app-sidebar'
+import { ChartAreaInteractive } from './components/content/chart-area-interactive'
+import { DataTable } from './components/content/data-table'
+import { SectionCards } from './components/content/section-cards'
+import { SiteHeader } from './components/content/site-header'
+import { CostBreakdown } from './components/content/cost-breakdown'
 
-import data from "./data.json"
+export const Route = createFileRoute('/dashboard/')({ component: App })
 
-export const Route = createFileRoute("/dashboard/")({ component: App });
-
-function App() {
+export function App() {
   return (
     <SidebarProvider
       className="flex h-screen"
       style={
         {
-          "--sidebar-width": "calc(var(--spacing) * 64)",
-          "--header-height": "calc(var(--spacing) * 12 + 1px)",
+          '--sidebar-width': 'calc(var(--spacing) * 64)',
+          '--header-height': 'calc(var(--spacing) * 12 + 1px)',
         } as React.CSSProperties
       }
     >
@@ -40,11 +35,11 @@ function App() {
                   <CostBreakdown />
                 </div>
               </div>
-              <DataTable data={data} />
+              <DataTable />
             </div>
           </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
-  );
+  )
 }

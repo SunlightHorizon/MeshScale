@@ -32,13 +32,16 @@ struct MeshScaleControlPlane {
         let app = HBApplication(configuration: .init(address: .hostname("0.0.0.0", port: 8080)))
         
         app.router.post("api/v1/deploy") { request -> HBResponse in
+            var headers = HTTPHeaders()
+            headers.add(name: "Access-Control-Allow-Origin", value: "*")
+            
             if let buffer = request.body.buffer,
                let data = buffer.getData(at: 0, length: buffer.readableBytes),
                let source = String(data: data, encoding: .utf8) {
                 controlPlane.deployProject(source)
-                return HBResponse(status: .accepted)
+                return HBResponse(status: .accepted, headers: headers)
             } else {
-                return HBResponse(status: .badRequest)
+                return HBResponse(status: .badRequest, headers: headers)
             }
         }
         

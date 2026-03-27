@@ -14,13 +14,7 @@ import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as ProjectsNewIndexRouteImport } from './routes/projects/new/index'
-import { Route as ProjectsComponentsProjectsListRouteImport } from './routes/projects/components/projects-list'
-import { Route as ProjectsComponentsProjectsHeaderRouteImport } from './routes/projects/components/projects-header'
-import { Route as ProjectsComponentsProjectsContentRouteImport } from './routes/projects/components/projects-content'
-import { Route as ProjectsComponentsEmptyProjectsRouteImport } from './routes/projects/components/empty-projects'
-import { Route as ProjectsComponentsCreateProjectDialogRouteImport } from './routes/projects/components/create-project-dialog'
-import { Route as ProjectsNewComponentsCreateProjectFormRouteImport } from './routes/projects/new/components/create-project-form'
-import { Route as DashboardComponentsContentCostBreakdownRouteImport } from './routes/dashboard/components/content/cost-breakdown'
+import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -47,76 +41,27 @@ const ProjectsNewIndexRoute = ProjectsNewIndexRouteImport.update({
   path: '/projects/new/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsComponentsProjectsListRoute =
-  ProjectsComponentsProjectsListRouteImport.update({
-    id: '/projects/components/projects-list',
-    path: '/projects/components/projects-list',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ProjectsComponentsProjectsHeaderRoute =
-  ProjectsComponentsProjectsHeaderRouteImport.update({
-    id: '/projects/components/projects-header',
-    path: '/projects/components/projects-header',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ProjectsComponentsProjectsContentRoute =
-  ProjectsComponentsProjectsContentRouteImport.update({
-    id: '/projects/components/projects-content',
-    path: '/projects/components/projects-content',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ProjectsComponentsEmptyProjectsRoute =
-  ProjectsComponentsEmptyProjectsRouteImport.update({
-    id: '/projects/components/empty-projects',
-    path: '/projects/components/empty-projects',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ProjectsComponentsCreateProjectDialogRoute =
-  ProjectsComponentsCreateProjectDialogRouteImport.update({
-    id: '/projects/components/create-project-dialog',
-    path: '/projects/components/create-project-dialog',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ProjectsNewComponentsCreateProjectFormRoute =
-  ProjectsNewComponentsCreateProjectFormRouteImport.update({
-    id: '/projects/new/components/create-project-form',
-    path: '/projects/new/components/create-project-form',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const DashboardComponentsContentCostBreakdownRoute =
-  DashboardComponentsContentCostBreakdownRouteImport.update({
-    id: '/dashboard/components/content/cost-breakdown',
-    path: '/dashboard/components/content/cost-breakdown',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
+  id: '/projects/$projectId/',
+  path: '/projects/$projectId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
-  '/projects/components/create-project-dialog': typeof ProjectsComponentsCreateProjectDialogRoute
-  '/projects/components/empty-projects': typeof ProjectsComponentsEmptyProjectsRoute
-  '/projects/components/projects-content': typeof ProjectsComponentsProjectsContentRoute
-  '/projects/components/projects-header': typeof ProjectsComponentsProjectsHeaderRoute
-  '/projects/components/projects-list': typeof ProjectsComponentsProjectsListRoute
+  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/new/': typeof ProjectsNewIndexRoute
-  '/dashboard/components/content/cost-breakdown': typeof DashboardComponentsContentCostBreakdownRoute
-  '/projects/new/components/create-project-form': typeof ProjectsNewComponentsCreateProjectFormRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
-  '/projects/components/create-project-dialog': typeof ProjectsComponentsCreateProjectDialogRoute
-  '/projects/components/empty-projects': typeof ProjectsComponentsEmptyProjectsRoute
-  '/projects/components/projects-content': typeof ProjectsComponentsProjectsContentRoute
-  '/projects/components/projects-header': typeof ProjectsComponentsProjectsHeaderRoute
-  '/projects/components/projects-list': typeof ProjectsComponentsProjectsListRoute
+  '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
   '/projects/new': typeof ProjectsNewIndexRoute
-  '/dashboard/components/content/cost-breakdown': typeof DashboardComponentsContentCostBreakdownRoute
-  '/projects/new/components/create-project-form': typeof ProjectsNewComponentsCreateProjectFormRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,14 +69,8 @@ export interface FileRoutesById {
   '/dashboard/': typeof DashboardIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
-  '/projects/components/create-project-dialog': typeof ProjectsComponentsCreateProjectDialogRoute
-  '/projects/components/empty-projects': typeof ProjectsComponentsEmptyProjectsRoute
-  '/projects/components/projects-content': typeof ProjectsComponentsProjectsContentRoute
-  '/projects/components/projects-header': typeof ProjectsComponentsProjectsHeaderRoute
-  '/projects/components/projects-list': typeof ProjectsComponentsProjectsListRoute
+  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
   '/projects/new/': typeof ProjectsNewIndexRoute
-  '/dashboard/components/content/cost-breakdown': typeof DashboardComponentsContentCostBreakdownRoute
-  '/projects/new/components/create-project-form': typeof ProjectsNewComponentsCreateProjectFormRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -140,42 +79,24 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/projects/'
     | '/settings/'
-    | '/projects/components/create-project-dialog'
-    | '/projects/components/empty-projects'
-    | '/projects/components/projects-content'
-    | '/projects/components/projects-header'
-    | '/projects/components/projects-list'
+    | '/projects/$projectId/'
     | '/projects/new/'
-    | '/dashboard/components/content/cost-breakdown'
-    | '/projects/new/components/create-project-form'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/dashboard'
     | '/projects'
     | '/settings'
-    | '/projects/components/create-project-dialog'
-    | '/projects/components/empty-projects'
-    | '/projects/components/projects-content'
-    | '/projects/components/projects-header'
-    | '/projects/components/projects-list'
+    | '/projects/$projectId'
     | '/projects/new'
-    | '/dashboard/components/content/cost-breakdown'
-    | '/projects/new/components/create-project-form'
   id:
     | '__root__'
     | '/'
     | '/dashboard/'
     | '/projects/'
     | '/settings/'
-    | '/projects/components/create-project-dialog'
-    | '/projects/components/empty-projects'
-    | '/projects/components/projects-content'
-    | '/projects/components/projects-header'
-    | '/projects/components/projects-list'
+    | '/projects/$projectId/'
     | '/projects/new/'
-    | '/dashboard/components/content/cost-breakdown'
-    | '/projects/new/components/create-project-form'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -183,14 +104,8 @@ export interface RootRouteChildren {
   DashboardIndexRoute: typeof DashboardIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
-  ProjectsComponentsCreateProjectDialogRoute: typeof ProjectsComponentsCreateProjectDialogRoute
-  ProjectsComponentsEmptyProjectsRoute: typeof ProjectsComponentsEmptyProjectsRoute
-  ProjectsComponentsProjectsContentRoute: typeof ProjectsComponentsProjectsContentRoute
-  ProjectsComponentsProjectsHeaderRoute: typeof ProjectsComponentsProjectsHeaderRoute
-  ProjectsComponentsProjectsListRoute: typeof ProjectsComponentsProjectsListRoute
+  ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
   ProjectsNewIndexRoute: typeof ProjectsNewIndexRoute
-  DashboardComponentsContentCostBreakdownRoute: typeof DashboardComponentsContentCostBreakdownRoute
-  ProjectsNewComponentsCreateProjectFormRoute: typeof ProjectsNewComponentsCreateProjectFormRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -230,53 +145,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsNewIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/components/projects-list': {
-      id: '/projects/components/projects-list'
-      path: '/projects/components/projects-list'
-      fullPath: '/projects/components/projects-list'
-      preLoaderRoute: typeof ProjectsComponentsProjectsListRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/components/projects-header': {
-      id: '/projects/components/projects-header'
-      path: '/projects/components/projects-header'
-      fullPath: '/projects/components/projects-header'
-      preLoaderRoute: typeof ProjectsComponentsProjectsHeaderRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/components/projects-content': {
-      id: '/projects/components/projects-content'
-      path: '/projects/components/projects-content'
-      fullPath: '/projects/components/projects-content'
-      preLoaderRoute: typeof ProjectsComponentsProjectsContentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/components/empty-projects': {
-      id: '/projects/components/empty-projects'
-      path: '/projects/components/empty-projects'
-      fullPath: '/projects/components/empty-projects'
-      preLoaderRoute: typeof ProjectsComponentsEmptyProjectsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/components/create-project-dialog': {
-      id: '/projects/components/create-project-dialog'
-      path: '/projects/components/create-project-dialog'
-      fullPath: '/projects/components/create-project-dialog'
-      preLoaderRoute: typeof ProjectsComponentsCreateProjectDialogRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/new/components/create-project-form': {
-      id: '/projects/new/components/create-project-form'
-      path: '/projects/new/components/create-project-form'
-      fullPath: '/projects/new/components/create-project-form'
-      preLoaderRoute: typeof ProjectsNewComponentsCreateProjectFormRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard/components/content/cost-breakdown': {
-      id: '/dashboard/components/content/cost-breakdown'
-      path: '/dashboard/components/content/cost-breakdown'
-      fullPath: '/dashboard/components/content/cost-breakdown'
-      preLoaderRoute: typeof DashboardComponentsContentCostBreakdownRouteImport
+    '/projects/$projectId/': {
+      id: '/projects/$projectId/'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId/'
+      preLoaderRoute: typeof ProjectsProjectIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -287,18 +160,8 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardIndexRoute: DashboardIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
-  ProjectsComponentsCreateProjectDialogRoute:
-    ProjectsComponentsCreateProjectDialogRoute,
-  ProjectsComponentsEmptyProjectsRoute: ProjectsComponentsEmptyProjectsRoute,
-  ProjectsComponentsProjectsContentRoute:
-    ProjectsComponentsProjectsContentRoute,
-  ProjectsComponentsProjectsHeaderRoute: ProjectsComponentsProjectsHeaderRoute,
-  ProjectsComponentsProjectsListRoute: ProjectsComponentsProjectsListRoute,
+  ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
   ProjectsNewIndexRoute: ProjectsNewIndexRoute,
-  DashboardComponentsContentCostBreakdownRoute:
-    DashboardComponentsContentCostBreakdownRoute,
-  ProjectsNewComponentsCreateProjectFormRoute:
-    ProjectsNewComponentsCreateProjectFormRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,5 +1,5 @@
-import { TrendingDown, TrendingUp } from "lucide-react"
-
+import { useLiveQuery } from "dexie-react-hooks"
+import { TrendingDown, TrendingUp, Activity, Server, Zap, CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -9,92 +9,138 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { db } from "@/lib/db"
 
 export function SectionCards() {
+  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? []
+  const deployments = useLiveQuery(() => db.deployments.toArray(), []) ?? []
+
+  const activeCount = projects.filter((p) => p.status === "running").length
+  const totalCount = projects.length
+
+  const successfulDeploys = deployments.filter((d) => d.status === "success").length
+  const failedDeploys = deployments.filter((d) => d.status === "failed").length
+  const totalDeploys = deployments.length
+
+  // Average uptime across running projects (parse "99.98%" → 99.98)
+  const runningProjects = projects.filter(
+    (p) => p.status === "running" && p.uptime !== "—"
+  )
+  const avgUptime =
+    runningProjects.length > 0
+      ? (
+          runningProjects.reduce((sum, p) => {
+            const val = parseFloat(p.uptime.replace("%", ""))
+            return sum + (isNaN(val) ? 0 : val)
+          }, 0) / runningProjects.length
+        ).toFixed(2) + "%"
+      : "—"
+
   return (
     <div className="grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Total Revenue</CardDescription>
+          <CardDescription className="flex items-center gap-1.5">
+            <Server className="size-3.5" />
+            Active Services
+          </CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            $1,250.00
+            {activeCount}
+            <span className="text-muted-foreground text-xl font-normal @[250px]/card:text-2xl">
+              /{totalCount}
+            </span>
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
               <TrendingUp />
-              +12.5%
+              {totalCount} total
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Trending up this month <TrendingUp className="size-4" />
+            {activeCount} running now
           </div>
           <div className="text-muted-foreground">
-            Visitors for the last 6 months
+            Websites, APIs, and game servers
           </div>
         </CardFooter>
       </Card>
+
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>New Customers</CardDescription>
+          <CardDescription className="flex items-center gap-1.5">
+            <CheckCircle2 className="size-3.5" />
+            Deployments
+          </CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            1,234
+            {totalDeploys}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
-              <TrendingDown />
-              -20%
+              {failedDeploys > 0 ? <TrendingDown /> : <TrendingUp />}
+              {successfulDeploys} succeeded
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Down 20% this period <TrendingDown className="size-4" />
+            {failedDeploys} failed
           </div>
           <div className="text-muted-foreground">
-            Acquisition needs attention
+            {successfulDeploys} successful deployments
           </div>
         </CardFooter>
       </Card>
+
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Active Accounts</CardDescription>
+          <CardDescription className="flex items-center gap-1.5">
+            <Zap className="size-3.5" />
+            Avg. Uptime
+          </CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            45,678
+            {avgUptime}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
               <TrendingUp />
-              +12.5%
+              running
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Strong user retention <TrendingUp className="size-4" />
+            Across {runningProjects.length} running service
+            {runningProjects.length !== 1 ? "s" : ""}
           </div>
-          <div className="text-muted-foreground">Engagement exceed targets</div>
+          <div className="text-muted-foreground">Based on reported uptime</div>
         </CardFooter>
       </Card>
+
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Growth Rate</CardDescription>
+          <CardDescription className="flex items-center gap-1.5">
+            <Activity className="size-3.5" />
+            Control Plane
+          </CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            4.5%
+            99.97%
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
               <TrendingUp />
-              +4.5%
+              +0.12%
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Steady performance increase <TrendingUp className="size-4" />
+            Up 0.12% vs last month <TrendingUp className="size-4" />
           </div>
-          <div className="text-muted-foreground">Meets growth projections</div>
+          <div className="text-muted-foreground">
+            Compared to 99.85% last month
+          </div>
         </CardFooter>
       </Card>
     </div>

@@ -25,10 +25,14 @@ extension MeshScaleCLI.ControlPlane {
             let service = "control-plane"
             
             if !dev {
-                if let pid = ConfigManager.shared.loadPid(for: service),
-                   ConfigManager.shared.isProcessRunning(pid) {
-                    print("⚠️ Control plane already running (PID: \(pid))")
-                    return
+                if let pid = ConfigManager.shared.loadPid(for: service) {
+                    if ConfigManager.shared.isProcessRunning(pid) {
+                        print("⚠️ Control plane already running (PID: \(pid))")
+                        return
+                    } else {
+                        print("⚠️ Stale PID found (\(pid)), previous instance may have crashed. Starting fresh...")
+                        ConfigManager.shared.removePid(for: service)
+                    }
                 }
             } else if let pid = ConfigManager.shared.loadPid(for: service),
                       ConfigManager.shared.isProcessRunning(pid) {

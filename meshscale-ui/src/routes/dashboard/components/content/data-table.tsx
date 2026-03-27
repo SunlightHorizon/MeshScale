@@ -14,8 +14,9 @@ import {
   TrendingUp,
 } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
-import { toast } from "sonner"
 import { z } from "zod"
+import { useLiveQuery } from "dexie-react-hooks"
+import { db } from "@/lib/db"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Badge } from "@/components/ui/badge"
@@ -72,30 +73,47 @@ import {
 
 export const schema = z.object({
   id: z.number(),
-  header: z.string(),
+  service: z.string(),
   type: z.string(),
   status: z.string(),
-  target: z.string(),
-  limit: z.string(),
-  reviewer: z.string(),
+  region: z.string(),
+  uptime: z.string(),
+  deployedBy: z.string(),
 })
 
-export function DataTable({
-  data: initialData,
-}: {
-  data: z.infer<typeof schema>[]
-}) {
-  const [data] = React.useState(() => initialData)
+export function DataTable() {
+  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? []
+
+  // Map Project rows to the table schema shape
+  const data: z.infer<typeof schema>[] = projects.map((p, i) => ({
+    id: i + 1,
+    service: p.name,
+    type: p.type
+      .split("-")
+      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .join(" "),
+    status:
+      p.status === "running"
+        ? "Running"
+        : p.status === "stopped"
+          ? "Stopped"
+          : p.status === "deploying"
+            ? "Deploying"
+            : "Error",
+    region: p.region,
+    uptime: p.uptime,
+    deployedBy: p.lastDeployedBy,
+  }))
   const [selectedRows, setSelectedRows] = React.useState<Set<number>>(new Set())
   const [currentPage, setCurrentPage] = React.useState(0)
   const [pageSize, setPageSize] = React.useState(10)
   const [visibleColumns, setVisibleColumns] = React.useState({
-    header: true,
+    service: true,
     type: true,
     status: true,
-    target: true,
-    limit: true,
-    reviewer: true,
+    region: true,
+    uptime: true,
+    deployedBy: true,
   })
 
   const totalPages = Math.ceil(data.length / pageSize)
@@ -139,21 +157,21 @@ export function DataTable({
             <SelectValue placeholder="Select a view" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="outline">Outline</SelectItem>
-            <SelectItem value="past-performance">Past Performance</SelectItem>
-            <SelectItem value="key-personnel">Key Personnel</SelectItem>
-            <SelectItem value="focus-documents">Focus Documents</SelectItem>
+            <SelectItem value="outline">Services</SelectItem>
+            <SelectItem value="past-performance">Deployments</SelectItem>
+            <SelectItem value="key-personnel">Alerts</SelectItem>
+            <SelectItem value="focus-documents">Costs</SelectItem>
           </SelectContent>
         </Select>
         <TabsList className="**:data-[slot=badge]:bg-muted-foreground/30 hidden **:data-[slot=badge]:size-5 **:data-[slot=badge]:rounded-full **:data-[slot=badge]:px-1 @4xl/main:flex">
-          <TabsTrigger value="outline">Outline</TabsTrigger>
+          <TabsTrigger value="outline">Services</TabsTrigger>
           <TabsTrigger value="past-performance">
-            Past Performance <Badge variant="secondary">3</Badge>
+            Deployments <Badge variant="secondary">3</Badge>
           </TabsTrigger>
           <TabsTrigger value="key-personnel">
-            Key Personnel <Badge variant="secondary">2</Badge>
+            Alerts <Badge variant="secondary">2</Badge>
           </TabsTrigger>
-          <TabsTrigger value="focus-documents">Focus Documents</TabsTrigger>
+          <TabsTrigger value="focus-documents">Costs</TabsTrigger>
         </TabsList>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -182,7 +200,7 @@ export function DataTable({
           </DropdownMenu>
           <Button variant="outline" size="sm">
             <Plus />
-            <span className="hidden lg:inline">Add Section</span>
+            <span className="hidden lg:inline">Add Service</span>
           </Button>
         </div>
       </div>
@@ -206,12 +224,12 @@ export function DataTable({
                     />
                   </div>
                 </TableHead>
-                {visibleColumns.header && <TableHead>Header</TableHead>}
-                {visibleColumns.type && <TableHead>Section Type</TableHead>}
+                {visibleColumns.service && <TableHead>Service</TableHead>}
+                {visibleColumns.type && <TableHead>Type</TableHead>}
                 {visibleColumns.status && <TableHead>Status</TableHead>}
-                {visibleColumns.target && <TableHead className="text-right">Target</TableHead>}
-                {visibleColumns.limit && <TableHead className="text-right">Limit</TableHead>}
-                {visibleColumns.reviewer && <TableHead>Reviewer</TableHead>}
+                {visibleColumns.region && <TableHead>Region</TableHead>}
+                {visibleColumns.uptime && <TableHead className="text-right">Uptime</TableHead>}
+                {visibleColumns.deployedBy && <TableHead>Deployed By</TableHead>}
                 <TableHead className="w-8"></TableHead>
               </TableRow>
             </TableHeader>
@@ -240,7 +258,7 @@ export function DataTable({
                         />
                       </div>
                     </TableCell>
-                    {visibleColumns.header && (
+                    {visibleColumns.service && (
                       <TableCell>
                         <TableCellViewer item={item} />
                       </TableCell>
@@ -257,8 +275,10 @@ export function DataTable({
                     {visibleColumns.status && (
                       <TableCell>
                         <Badge variant="outline" className="text-muted-foreground px-1.5">
-                          {item.status === "Done" ? (
+                          {item.status === "Running" ? (
                             <CheckCircle2 className="fill-green-500 dark:fill-green-400" />
+                          ) : item.status === "Deploying" ? (
+                            <Loader2 className="animate-spin text-yellow-500" />
                           ) : (
                             <Loader2 />
                           )}
@@ -266,78 +286,19 @@ export function DataTable({
                         </Badge>
                       </TableCell>
                     )}
-                    {visibleColumns.target && (
+                    {visibleColumns.region && (
                       <TableCell>
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault()
-                            toast.promise(new Promise((resolve) => setTimeout(resolve, 1000)), {
-                              loading: `Saving ${item.header}`,
-                              success: "Done",
-                              error: "Error",
-                            })
-                          }}
-                        >
-                          <Label htmlFor={`${item.id}-target`} className="sr-only">
-                            Target
-                          </Label>
-                          <Input
-                            className="hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 h-8 w-16 border-transparent bg-transparent text-right shadow-none focus-visible:border dark:bg-transparent"
-                            defaultValue={item.target}
-                            id={`${item.id}-target`}
-                          />
-                        </form>
+                        <span className="text-muted-foreground text-sm">{item.region}</span>
                       </TableCell>
                     )}
-                    {visibleColumns.limit && (
-                      <TableCell>
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault()
-                            toast.promise(new Promise((resolve) => setTimeout(resolve, 1000)), {
-                              loading: `Saving ${item.header}`,
-                              success: "Done",
-                              error: "Error",
-                            })
-                          }}
-                        >
-                          <Label htmlFor={`${item.id}-limit`} className="sr-only">
-                            Limit
-                          </Label>
-                          <Input
-                            className="hover:bg-input/30 focus-visible:bg-background dark:hover:bg-input/30 dark:focus-visible:bg-input/30 h-8 w-16 border-transparent bg-transparent text-right shadow-none focus-visible:border dark:bg-transparent"
-                            defaultValue={item.limit}
-                            id={`${item.id}-limit`}
-                          />
-                        </form>
+                    {visibleColumns.uptime && (
+                      <TableCell className="text-right tabular-nums">
+                        {item.uptime}
                       </TableCell>
                     )}
-                    {visibleColumns.reviewer && (
+                    {visibleColumns.deployedBy && (
                       <TableCell>
-                        {item.reviewer !== "Assign reviewer" ? (
-                          item.reviewer
-                        ) : (
-                          <>
-                            <Label htmlFor={`${item.id}-reviewer`} className="sr-only">
-                              Reviewer
-                            </Label>
-                            <Select>
-                              <SelectTrigger
-                                className="w-38 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate"
-                                size="sm"
-                                id={`${item.id}-reviewer`}
-                              >
-                                <SelectValue placeholder="Assign reviewer" />
-                              </SelectTrigger>
-                              <SelectContent align="end">
-                                <SelectItem value="Eddie Lake">Eddie Lake</SelectItem>
-                                <SelectItem value="Jamik Tashpulatov">
-                                  Jamik Tashpulatov
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </>
-                        )}
+                        {item.deployedBy}
                       </TableCell>
                     )}
                     <TableCell>
@@ -494,14 +455,14 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
     <Drawer direction={isMobile ? "bottom" : "right"}>
       <DrawerTrigger asChild>
         <Button variant="link" className="text-foreground w-fit px-0 text-left">
-          {item.header}
+          {item.service}
         </Button>
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader className="gap-1">
-          <DrawerTitle>{item.header}</DrawerTitle>
+          <DrawerTitle>{item.service}</DrawerTitle>
           <DrawerDescription>
-            Showing total visitors for the last 6 months
+            Service details and deployment information
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-4 overflow-y-auto px-4 text-sm">
@@ -550,13 +511,11 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
               <Separator />
               <div className="grid gap-2">
                 <div className="flex gap-2 leading-none font-medium">
-                  Trending up by 5.2% this month{" "}
+                  Requests trending up by 5.2% this month{" "}
                   <TrendingUp className="size-4" />
                 </div>
                 <div className="text-muted-foreground">
-                  Showing total visitors for the last 6 months. This is just
-                  some random text to test the layout. It spans multiple lines
-                  and should wrap around.
+                  Showing request volume for the last 6 months.
                 </div>
               </div>
               <Separator />
@@ -564,8 +523,8 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
           )}
           <form className="flex flex-col gap-4">
             <div className="flex flex-col gap-3">
-              <Label htmlFor="header">Header</Label>
-              <Input id="header" defaultValue={item.header} />
+              <Label htmlFor="service">Service Name</Label>
+              <Input id="service" defaultValue={item.service} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-3">
@@ -575,22 +534,11 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
                     <SelectValue placeholder="Select a type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Table of Contents">
-                      Table of Contents
-                    </SelectItem>
-                    <SelectItem value="Executive Summary">
-                      Executive Summary
-                    </SelectItem>
-                    <SelectItem value="Technical Approach">
-                      Technical Approach
-                    </SelectItem>
-                    <SelectItem value="Design">Design</SelectItem>
-                    <SelectItem value="Capabilities">Capabilities</SelectItem>
-                    <SelectItem value="Focus Documents">
-                      Focus Documents
-                    </SelectItem>
-                    <SelectItem value="Narrative">Narrative</SelectItem>
-                    <SelectItem value="Cover Page">Cover Page</SelectItem>
+                    <SelectItem value="Website">Website</SelectItem>
+                    <SelectItem value="Game Server">Game Server</SelectItem>
+                    <SelectItem value="API">API</SelectItem>
+                    <SelectItem value="Worker">Worker</SelectItem>
+                    <SelectItem value="Cron Job">Cron Job</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -601,28 +549,29 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
                     <SelectValue placeholder="Select a status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Done">Done</SelectItem>
-                    <SelectItem value="In Progress">In Progress</SelectItem>
-                    <SelectItem value="Not Started">Not Started</SelectItem>
+                    <SelectItem value="Running">Running</SelectItem>
+                    <SelectItem value="Stopped">Stopped</SelectItem>
+                    <SelectItem value="Deploying">Deploying</SelectItem>
+                    <SelectItem value="Error">Error</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-3">
-                <Label htmlFor="target">Target</Label>
-                <Input id="target" defaultValue={item.target} />
+                <Label htmlFor="region">Region</Label>
+                <Input id="region" defaultValue={item.region} />
               </div>
               <div className="flex flex-col gap-3">
-                <Label htmlFor="limit">Limit</Label>
-                <Input id="limit" defaultValue={item.limit} />
+                <Label htmlFor="uptime">Uptime</Label>
+                <Input id="uptime" defaultValue={item.uptime} readOnly />
               </div>
             </div>
             <div className="flex flex-col gap-3">
-              <Label htmlFor="reviewer">Reviewer</Label>
-              <Select defaultValue={item.reviewer}>
-                <SelectTrigger id="reviewer" className="w-full">
-                  <SelectValue placeholder="Select a reviewer" />
+              <Label htmlFor="deployedBy">Deployed By</Label>
+              <Select defaultValue={item.deployedBy}>
+                <SelectTrigger id="deployedBy" className="w-full">
+                  <SelectValue placeholder="Select a deployer" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Eddie Lake">Eddie Lake</SelectItem>
@@ -636,7 +585,7 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
           </form>
         </div>
         <DrawerFooter>
-          <Button>Submit</Button>
+          <Button>Save Changes</Button>
           <DrawerClose asChild>
             <Button variant="outline">Done</Button>
           </DrawerClose>

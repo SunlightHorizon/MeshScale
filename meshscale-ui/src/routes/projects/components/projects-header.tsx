@@ -11,7 +11,7 @@ export function ProjectsHeader() {
           <Link to="/projects/new">
             <Button size="sm">
               <Plus />
-              <span>New Project</span>
+              <span>New Deployment</span>
             </Button>
           </Link>
         </div>
@@ -19,12 +19,4 @@ export function ProjectsHeader() {
     </header>
   )
 }
-import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/projects/components/projects-header')({
-  component: RouteComponent,
-})
-
-function RouteComponent() {
-  return <div>Hello "/projects/components/projects-header"!</div>
-}

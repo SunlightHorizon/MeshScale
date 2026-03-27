@@ -9,27 +9,19 @@ export function EmptyProjects() {
         <div className="bg-muted flex size-20 items-center justify-center rounded-full">
           <FolderOpen className="text-muted-foreground size-10" />
         </div>
-        <h2 className="mt-6 text-xl font-semibold">No projects yet</h2>
+        <h2 className="mt-6 text-xl font-semibold">No deployments yet</h2>
         <p className="text-muted-foreground mt-2 text-sm">
-          Get started by creating your first project. Projects help you organize
-          and track your work.
+          Deploy your first project — a website, game server, API, or background
+          worker. Get up and running in minutes.
         </p>
         <Link to="/projects/new" className="mt-6">
           <Button size="lg">
             <Plus />
-            Create Your First Project
+            Deploy Your First Project
           </Button>
         </Link>
       </div>
     </div>
   )
 }
-import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/projects/components/empty-projects')({
-  component: RouteComponent,
-})
-
-function RouteComponent() {
-  return <div>Hello "/projects/components/empty-projects"!</div>
-}

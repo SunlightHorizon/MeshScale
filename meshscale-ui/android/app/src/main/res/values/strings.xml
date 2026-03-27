@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MeshScale</string>
+    <string name="title_activity_main">MeshScale</string>
+    <string name="package_name">com.meshscale.ui</string>
+    <string name="custom_url_scheme">com.meshscale.ui</string>
+</resources>

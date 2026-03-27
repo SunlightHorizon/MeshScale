@@ -110,14 +110,4 @@ export function CreateProjectDialog() {
     </Dialog>
   )
 }
-import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute(
-  '/projects/components/create-project-dialog',
-)({
-  component: RouteComponent,
-})
-
-function RouteComponent() {
-  return <div>Hello "/projects/components/create-project-dialog"!</div>
-}

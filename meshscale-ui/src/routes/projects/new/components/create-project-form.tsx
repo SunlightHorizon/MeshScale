@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,23 +11,72 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { db } from "@/lib/db"
+import type { Project, Deployment, ProjectType } from "@/routes/projects/data"
 
 export function CreateProjectForm() {
   const navigate = useNavigate()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [type, setType] = useState<ProjectType>("website")
+  const [region, setRegion] = useState("us-east-1")
+  const [instances, setInstances] = useState(1)
+  const [branch, setBranch] = useState("main")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle project creation here
-    console.log("Creating project...")
-    navigate({ to: "/projects" })
-  }
+    setIsSubmitting(true)
 
-  const handleSaveDraft = () => {
-    // Handle saving as draft
-    console.log("Saving as draft...")
-    navigate({ to: "/projects" })
+    const id = name
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+
+    const project: Project = {
+      id,
+      name: name.trim(),
+      description: description.trim(),
+      type,
+      status: "deploying",
+      region,
+      uptime: "—",
+      lastDeployed: "Just now",
+      lastDeployedBy: "You",
+      cpu: 0,
+      memory: 0,
+      instances: 0,
+    }
+
+    const deployment: Deployment = {
+      id: `${id}-d1`,
+      projectId: id,
+      commit: "initial",
+      branch,
+      message: "Initial deployment",
+      status: "in-progress",
+      createdAt: "Just now",
+      duration: "-",
+      deployedBy: "You",
+    }
+
+    try {
+      await db.projects.add(project)
+      await db.deployments.add(deployment)
+      navigate({ to: "/projects/$projectId", params: { projectId: id } })
+    } catch (err) {
+      console.error("Failed to create project", err)
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -37,7 +87,7 @@ export function CreateProjectForm() {
             <CardHeader>
               <CardTitle>Project Details</CardTitle>
               <CardDescription>
-                Enter the basic information about your project
+                Basic information about your deployment project
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -45,16 +95,20 @@ export function CreateProjectForm() {
                 <Label htmlFor="name">Project Name *</Label>
                 <Input
                   id="name"
-                  placeholder="Enter project name"
+                  placeholder="e.g. my-game-server"
                   required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
-                  placeholder="Brief description of the project"
-                  rows={4}
+                  placeholder="What does this project do?"
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
             </CardContent>
@@ -62,45 +116,71 @@ export function CreateProjectForm() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Project Settings</CardTitle>
+              <CardTitle>Deployment Configuration</CardTitle>
               <CardDescription>
-                Configure the project timeline and team
+                Configure how and where this project will be deployed
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="grid gap-2">
-                  <Label htmlFor="status">Status *</Label>
-                  <Select defaultValue="planning" required>
-                    <SelectTrigger id="status">
-                      <SelectValue placeholder="Select status" />
+                  <Label htmlFor="type">Project Type *</Label>
+                  <Select
+                    value={type}
+                    onValueChange={(v) => setType(v as ProjectType)}
+                  >
+                    <SelectTrigger id="type">
+                      <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="planning">Planning</SelectItem>
-                      <SelectItem value="in-progress">In Progress</SelectItem>
-                      <SelectItem value="on-hold">On Hold</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="website">Website</SelectItem>
+                      <SelectItem value="game-server">Game Server</SelectItem>
+                      <SelectItem value="api">API</SelectItem>
+                      <SelectItem value="worker">Worker</SelectItem>
+                      <SelectItem value="cron">Cron Job</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="due-date">Due Date *</Label>
-                  <Input
-                    id="due-date"
-                    type="date"
-                    required
-                  />
+                  <Label htmlFor="region">Region *</Label>
+                  <Select value={region} onValueChange={setRegion}>
+                    <SelectTrigger id="region">
+                      <SelectValue placeholder="Select region" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="us-east-1">
+                        US East (N. Virginia)
+                      </SelectItem>
+                      <SelectItem value="us-west-2">
+                        US West (Oregon)
+                      </SelectItem>
+                      <SelectItem value="eu-west-1">EU (Ireland)</SelectItem>
+                      <SelectItem value="ap-southeast-1">
+                        Asia Pacific (Singapore)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="team-size">Team Size</Label>
-                <Input
-                  id="team-size"
-                  type="number"
-                  placeholder="Number of team members"
-                  min="1"
-                  defaultValue="1"
-                />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="instances">Initial Instances</Label>
+                  <Input
+                    id="instances"
+                    type="number"
+                    min="1"
+                    value={instances}
+                    onChange={(e) => setInstances(Number(e.target.value))}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="branch">Deploy Branch</Label>
+                  <Input
+                    id="branch"
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value)}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -115,30 +195,12 @@ export function CreateProjectForm() {
             >
               Cancel
             </Button>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={handleSaveDraft}
-              >
-                Save as Draft
-              </Button>
-              <Button type="submit">Create Project</Button>
-            </div>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Deploying..." : "Deploy Project"}
+            </Button>
           </div>
         </form>
       </div>
     </div>
   )
-}
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute(
-  '/projects/new/components/create-project-form',
-)({
-  component: RouteComponent,
-})
-
-function RouteComponent() {
-  return <div>Hello "/projects/new/components/create-project-form"!</div>
 }

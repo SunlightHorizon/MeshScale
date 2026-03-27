@@ -87,14 +87,4 @@ export function CostBreakdown() {
     </Card>
   )
 }
-import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute(
-  '/dashboard/components/content/cost-breakdown',
-)({
-  component: RouteComponent,
-})
-
-function RouteComponent() {
-  return <div>Hello "/dashboard/components/content/cost-breakdown"!</div>
-}
