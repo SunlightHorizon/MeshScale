@@ -130,7 +130,7 @@ struct ToolchainManager: @unchecked Sendable {
     private let meshScaleHome: URL
     private let toolchainsDir: URL
     private let selectionFile: URL
-    private let defaultManifestURL = "https://github.com/priamc/MeshScale/releases/latest/download/meshscale-toolchains.json"
+    private let defaultManifestURL = "https://github.com/SunlightHorizon/MeshScale/releases/latest/download/meshscale-toolchains.json"
 
     private init() {
         meshScaleHome = fileManager.homeDirectoryForCurrentUser
