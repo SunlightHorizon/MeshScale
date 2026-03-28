@@ -599,16 +599,18 @@ struct ToolchainManager: @unchecked Sendable {
 
     private func sha256Hex(for fileURL: URL) throws -> String {
         let commands: [[String]] = [
-            ["shasum", "-a", "256", fileURL.path],
             ["sha256sum", fileURL.path],
+            ["shasum", "-a", "256", fileURL.path],
         ]
 
         for command in commands {
             let process = Process()
             let outputPipe = Pipe()
+            let errorPipe = Pipe()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = command
             process.standardOutput = outputPipe
+            process.standardError = errorPipe
 
             do {
                 try process.run()
