@@ -75,15 +75,15 @@ jobs:
         working-directory: meshscale-swift
         run: |
           set -euo pipefail
-          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleCLI
-          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleControlPlane
-          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleWorker
+          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --static-swift-stdlib --product MeshScaleCLI
+          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --static-swift-stdlib --product MeshScaleControlPlane
+          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --static-swift-stdlib --product MeshScaleWorker
 
       - name: Package MeshScale binaries and control plane dependencies
         working-directory: meshscale-swift
         run: |
           set -euo pipefail
-          BIN_DIR="$(swift build --build-path "${SWIFT_BUILD_PATH}" -c release --show-bin-path)"
+          BIN_DIR="$(swift build --build-path "${SWIFT_BUILD_PATH}" -c release --static-swift-stdlib --show-bin-path)"
           DIST_DIR="$PWD/release-dist"
           ASSET_DIR="$PWD/release-assets"
           TOOLCHAIN_ROOT="$(dirname "$(dirname "$(dirname "$(realpath "$(command -v swift)")")")")"
