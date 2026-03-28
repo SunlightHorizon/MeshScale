@@ -79,28 +79,19 @@ jobs:
           swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleControlPlane
           swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleWorker
 
-      - name: Package MeshScale CLI and toolchains
+      - name: Package MeshScale binaries
         working-directory: meshscale-swift
         run: |
           set -euo pipefail
           BIN_DIR="$(swift build --build-path "${SWIFT_BUILD_PATH}" -c release --show-bin-path)"
           DIST_DIR="$PWD/release-dist"
           ASSET_DIR="$PWD/release-assets"
-          TOOLCHAIN_ROOT="$(python3 -c 'import json, os, shutil, subprocess, sys; info = json.loads(subprocess.check_output(["swiftc", "-print-target-info"], text=True)) if sys.platform == "darwin" else None; runtime_resource_path = info["paths"]["runtimeResourcePath"] if info else None; swift_path = os.path.realpath(shutil.which("swift")) if not info else None; toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_resource_path))) if info else os.path.dirname(os.path.dirname(os.path.dirname(swift_path))); print(toolchain_root)')"
-          LIB_SEARCH_DIRS=()
-          for dir in /usr/lib /usr/lib64 /lib /lib64; do
-            if [ -d "$dir" ]; then
-              LIB_SEARCH_DIRS+=("$dir")
-            fi
-          done
 
           rm -rf "$DIST_DIR" "$ASSET_DIR"
           mkdir -p \
             "$DIST_DIR/cli" \
-            "$DIST_DIR/controlplane/foundationdb/include" \
-            "$DIST_DIR/controlplane/foundationdb/lib" \
-            "$DIST_DIR/worker/foundationdb/include" \
-            "$DIST_DIR/worker/foundationdb/lib" \
+            "$DIST_DIR/controlplane" \
+            "$DIST_DIR/worker" \
             "$ASSET_DIR"
 
           test -f "$BIN_DIR/MeshScaleCLI"
@@ -111,20 +102,10 @@ jobs:
           cp "$BIN_DIR/MeshScaleWorker" "$DIST_DIR/worker/MeshScaleWorker"
 
           ls -la "$BIN_DIR"
-          rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/controlplane/swift-toolchain/"
-          rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/worker/swift-toolchain/"
-
-          rsync -a /usr/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
-          rsync -a /usr/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
-          find "${LIB_SEARCH_DIRS[@]}" -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 | \
-            while IFS= read -r -d '' lib; do
-              cp -a "$lib" "$DIST_DIR/controlplane/foundationdb/lib/"
-              cp -a "$lib" "$DIST_DIR/worker/foundationdb/lib/"
-            done
 
           tar -C "$DIST_DIR/cli" -czf "$ASSET_DIR/meshscale-cli-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" meshscale
-          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-toolchain-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" controlplane
-          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-toolchain-worker-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" worker
+          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" controlplane
+          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-worker-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" worker
 
       - name: Upload packaged assets
         uses: actions/upload-artifact@v4
@@ -146,12 +127,67 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Install manifest tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq
+
       - name: Generate toolchain manifest
         env:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          python3 -c 'import datetime, hashlib, json, os; from pathlib import Path; version = os.environ["RELEASE_VERSION"]; repository = os.environ["REPOSITORY"]; assets_dir = Path("release-assets"); artifacts = [{"version": version, "role": archive.name.removesuffix(".tar.gz").split("-")[2], "platform": archive.name.removesuffix(".tar.gz").split("-")[3], "arch": archive.name.removesuffix(".tar.gz").split("-")[4], "url": f"https://github.com/{repository}/releases/download/{version}/{archive.name}", "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(), "executables": ["MeshScaleControlPlane" if archive.name.removesuffix(".tar.gz").split("-")[2] == "controlplane" else "MeshScaleWorker"]} for archive in sorted(assets_dir.glob("meshscale-toolchain-*.tar.gz"))]; manifest = {"schemaVersion": 1, "latestVersion": version, "generatedAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "artifacts": artifacts}; (assets_dir / "meshscale-toolchains.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")'
+          ARTIFACTS_JSON="$(mktemp)"
+          printf '[]\n' > "$ARTIFACTS_JSON"
+          GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          for archive in release-assets/meshscale-controlplane-*.tar.gz release-assets/meshscale-worker-*.tar.gz; do
+            [ -f "$archive" ] || continue
+            filename="$(basename "$archive" .tar.gz)"
+            role="$(printf '%s' "$filename" | cut -d- -f2)"
+            platform="$(printf '%s' "$filename" | cut -d- -f3)"
+            arch="$(printf '%s' "$filename" | cut -d- -f4)"
+            checksum="$(sha256sum "$archive" | awk '{print $1}')"
+
+            if [ "$role" = "controlplane" ]; then
+              executable="MeshScaleControlPlane"
+            else
+              executable="MeshScaleWorker"
+            fi
+
+            tmp_json="$(mktemp)"
+            jq \
+              --arg version "$RELEASE_VERSION" \
+              --arg role "$role" \
+              --arg platform "$platform" \
+              --arg arch "$arch" \
+              --arg url "https://github.com/${REPOSITORY}/releases/download/${RELEASE_VERSION}/$(basename "$archive")" \
+              --arg sha256 "$checksum" \
+              --arg executable "$executable" \
+              '. + [{
+                version: $version,
+                role: $role,
+                platform: $platform,
+                arch: $arch,
+                url: $url,
+                sha256: $sha256,
+                executables: [$executable]
+              }]' \
+              "$ARTIFACTS_JSON" > "$tmp_json"
+            mv "$tmp_json" "$ARTIFACTS_JSON"
+          done
+
+          jq -n \
+            --arg latestVersion "$RELEASE_VERSION" \
+            --arg generatedAt "$GENERATED_AT" \
+            --slurpfile artifacts "$ARTIFACTS_JSON" \
+            '{
+              schemaVersion: 1,
+              latestVersion: $latestVersion,
+              generatedAt: $generatedAt,
+              artifacts: $artifacts[0]
+            }' > release-assets/meshscale-toolchains.json
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
