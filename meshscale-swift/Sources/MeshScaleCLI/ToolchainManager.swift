@@ -125,6 +125,7 @@ enum ToolchainManagerError: LocalizedError {
 
 struct ToolchainManager: @unchecked Sendable {
     static let shared = ToolchainManager()
+    typealias ProgressHandler = @Sendable (String) -> Void
 
     private let fileManager = FileManager.default
     private let meshScaleHome: URL
@@ -144,14 +145,24 @@ struct ToolchainManager: @unchecked Sendable {
     func install(
         version requestedVersion: String,
         roles: [MeshScaleToolchainRole],
-        manifestURL overrideManifestURL: String? = nil
+        manifestURL overrideManifestURL: String? = nil,
+        progress: ProgressHandler? = nil
     ) throws -> String {
-        let manifest = try fetchManifest(from: overrideManifestURL)
+        let manifestURLString =
+            overrideManifestURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? overrideManifestURL!
+            : ProcessInfo.processInfo.environment["MESHCALE_INSTALL_MANIFEST_URL"]
+                ?? defaultManifestURL
+
+        progress?("Fetching toolchain manifest from \(manifestURLString)")
+        let manifest = try fetchManifest(from: manifestURLString)
         let version = resolveVersion(requestedVersion, manifest: manifest)
         let platform = currentPlatformIdentifier()
         let arch = currentArchitectureIdentifier()
+        progress?("Resolved install target: version \(version), platform \(platform), arch \(arch)")
 
         for role in roles {
+            progress?("Preparing \(role.displayName) toolchain")
             let matchingArtifacts = manifest.artifacts.filter {
                 $0.version == version &&
                 $0.platform == platform &&
@@ -172,7 +183,7 @@ struct ToolchainManager: @unchecked Sendable {
             }
 
             let root = toolchainRoot(version: version, role: role)
-            try installArtifact(binaryArtifact, to: root)
+            try installArtifact(binaryArtifact, to: root, progress: progress)
 
             let componentArtifacts = matchingArtifacts.filter {
                 let component = $0.component?.lowercased() ?? "binary"
@@ -182,8 +193,10 @@ struct ToolchainManager: @unchecked Sendable {
             for artifact in componentArtifacts {
                 let componentName = artifact.installSubpath ?? artifact.component ?? UUID().uuidString
                 let destination = root.appendingPathComponent(componentName, isDirectory: true)
-                try installArtifact(artifact, to: destination)
+                try installArtifact(artifact, to: destination, progress: progress)
             }
+
+            progress?("Installed \(role.displayName) toolchain into \(root.path)")
         }
 
         try saveSelection(
@@ -192,6 +205,7 @@ struct ToolchainManager: @unchecked Sendable {
                 updatedAt: Date()
             )
         )
+        progress?("Selected MeshScale toolchain version \(version)")
         return version
     }
 
@@ -230,13 +244,7 @@ struct ToolchainManager: @unchecked Sendable {
             .appendingPathComponent(role.rawValue, isDirectory: true)
     }
 
-    private func fetchManifest(from overrideManifestURL: String?) throws -> MeshScaleToolchainManifest {
-        let manifestURLString =
-            overrideManifestURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? overrideManifestURL!
-            : ProcessInfo.processInfo.environment["MESHCALE_INSTALL_MANIFEST_URL"]
-                ?? defaultManifestURL
-
+    private func fetchManifest(from manifestURLString: String) throws -> MeshScaleToolchainManifest {
         guard let url = URL(string: manifestURLString) else {
             throw ToolchainManagerError.invalidManifestURL(manifestURLString)
         }
@@ -270,7 +278,11 @@ struct ToolchainManager: @unchecked Sendable {
         return trimmed
     }
 
-    private func installArtifact(_ artifact: MeshScaleToolchainArtifact, to destinationURL: URL) throws {
+    private func installArtifact(
+        _ artifact: MeshScaleToolchainArtifact,
+        to destinationURL: URL,
+        progress: ProgressHandler?
+    ) throws {
         guard let artifactURL = URL(string: artifact.url) else {
             throw ToolchainManagerError.invalidArtifactURL(artifact.url)
         }
@@ -283,11 +295,12 @@ struct ToolchainManager: @unchecked Sendable {
         try fileManager.createDirectory(at: extractionURL, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryRoot) }
 
-        let data = try download(url: artifactURL)
-        try data.write(to: archiveURL, options: .atomic)
+        progress?("Downloading \(artifactDescription(for: artifact))")
+        try download(url: artifactURL, to: archiveURL)
 
         if let expectedChecksum = artifact.sha256?.lowercased(),
            !expectedChecksum.isEmpty {
+            progress?("Verifying checksum for \(artifactDescription(for: artifact))")
             let actualChecksum = try sha256Hex(for: archiveURL).lowercased()
             guard actualChecksum == expectedChecksum else {
                 throw ToolchainManagerError.checksumMismatch(
@@ -297,6 +310,7 @@ struct ToolchainManager: @unchecked Sendable {
             }
         }
 
+        progress?("Extracting \(artifactDescription(for: artifact))")
         try extractArchive(at: archiveURL, to: extractionURL)
 
         let payloadRoot = try payloadRootDirectory(from: extractionURL)
@@ -307,6 +321,7 @@ struct ToolchainManager: @unchecked Sendable {
             at: destinationURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        progress?("Installing \(artifactDescription(for: artifact)) into \(destinationURL.path)")
         try fileManager.copyItem(at: payloadRoot, to: destinationURL)
 
         if let executables = artifact.executables {
@@ -324,22 +339,32 @@ struct ToolchainManager: @unchecked Sendable {
     }
 
     private func download(url: URL) throws -> Data {
+        let temporaryFile = fileManager.temporaryDirectory
+            .appendingPathComponent("meshscale-download-\(UUID().uuidString)", isDirectory: false)
+        defer { try? fileManager.removeItem(at: temporaryFile) }
+
+        try download(url: url, to: temporaryFile)
+        return try Data(contentsOf: temporaryFile)
+    }
+
+    private func download(url: URL, to destinationURL: URL) throws {
         let semaphore = DispatchSemaphore(value: 0)
         let session = URLSession.shared
 
         final class Box: @unchecked Sendable {
-            var data: Data?
+            var temporaryURL: URL?
             var response: URLResponse?
             var error: Error?
         }
 
         let box = Box()
-        session.dataTask(with: url) { data, response, error in
-            box.data = data
+        let task = session.downloadTask(with: url) { temporaryURL, response, error in
+            box.temporaryURL = temporaryURL
             box.response = response
             box.error = error
             semaphore.signal()
-        }.resume()
+        }
+        task.resume()
 
         semaphore.wait()
 
@@ -351,11 +376,18 @@ struct ToolchainManager: @unchecked Sendable {
             throw ToolchainManagerError.manifestDownloadFailed("No HTTP response received.")
         }
 
-        guard (200..<300).contains(http.statusCode), let data = box.data else {
+        guard (200..<300).contains(http.statusCode), let temporaryURL = box.temporaryURL else {
             throw ToolchainManagerError.manifestDownloadFailed("HTTP \(http.statusCode)")
         }
 
-        return data
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.createDirectory(
+            at: destinationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try fileManager.moveItem(at: temporaryURL, to: destinationURL)
     }
 
     private func extractArchive(at archiveURL: URL, to destinationURL: URL) throws {
@@ -633,5 +665,10 @@ struct ToolchainManager: @unchecked Sendable {
         }
 
         throw ToolchainManagerError.extractionFailed("No SHA-256 utility was available to verify the toolchain archive.")
+    }
+
+    private func artifactDescription(for artifact: MeshScaleToolchainArtifact) -> String {
+        let component = artifact.component ?? "binary"
+        return "\(artifact.role) \(component) (\(artifact.platform)-\(artifact.arch))"
     }
 }

@@ -19,10 +19,15 @@ extension MeshScaleCLI {
 
         func run() throws {
             let roles = try resolvedRoles()
+            let roleSummary = roles.map(\.displayName).joined(separator: ", ")
+            print("Installing MeshScale toolchains for: \(roleSummary)")
             let installedVersion = try ToolchainManager.shared.install(
                 version: version,
                 roles: roles,
-                manifestURL: manifestURL
+                manifestURL: manifestURL,
+                progress: { message in
+                    print("[install] \(message)")
+                }
             )
 
             print("Installed MeshScale toolchain \(installedVersion):")
