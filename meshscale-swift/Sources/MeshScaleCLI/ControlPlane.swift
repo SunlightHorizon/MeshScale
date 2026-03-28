@@ -1,5 +1,7 @@
 import Foundation
 import ArgumentParser
+import MeshScaleControlPlaneRuntime
+import MeshScaleStore
 
 extension MeshScaleCLI {
     struct ControlPlane: ParsableCommand {
@@ -20,6 +22,9 @@ extension MeshScaleCLI.ControlPlane {
         
         @Flag(name: .long, help: "Run in foreground and stream logs to this terminal")
         var dev: Bool = false
+
+        @Flag(name: .long, help: "Use locally built binaries instead of an installed toolchain. Intended for repository development only.")
+        var allowLocalBuild: Bool = false
         
         func run() throws {
             let service = "control-plane"
@@ -40,21 +45,35 @@ extension MeshScaleCLI.ControlPlane {
                 print("   Stop it first with 'meshscale control-plane stop', then run with '--dev' again.")
                 return
             }
-            #if os(Windows)
-            let executableName = "MeshScaleControlPlane.exe"
-            #else
-            let executableName = "MeshScaleControlPlane"
-            #endif
-            let path = ".build/debug/\(executableName)"
-            guard FileManager.default.fileExists(atPath: path) else {
-                print("❌ \(executableName) not found. Run `swift build` first.")
+            let resolvedExecutable: ResolvedToolchainExecutable
+            do {
+                resolvedExecutable = try ToolchainManager.shared.resolveExecutable(
+                    for: .controlPlane,
+                    allowLocalBuild: allowLocalBuild
+                )
+            } catch {
+                print("❌ \(error.localizedDescription)")
+                if !allowLocalBuild {
+                    print("   Run 'meshscale install' to download the control-plane toolchain.")
+                    print("   Repository development can opt into local binaries with '--allow-local-build'.")
+                }
+                throw ExitCode.failure
+            }
+            do {
+                try SetupManager.shared.assertReady(for: .controlPlane)
+            } catch {
+                print("❌ \(error.localizedDescription)")
+                print("   Run 'meshscale setup --role control-plane' before starting the control plane.")
                 throw ExitCode.failure
             }
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: path)
+            process.executableURL = resolvedExecutable.url
+            process.environment = ProcessInfo.processInfo.environment
+                .merging(SetupManager.shared.environment(for: .controlPlane)) { _, new in new }
+                .merging(resolvedExecutable.environment) { _, new in new }
             
             if dev {
-                print("Starting control plane in dev mode (foreground)...")
+                print("Starting control plane in dev mode (foreground) from \(resolvedExecutable.source)...")
                 process.standardOutput = FileHandle.standardOutput
                 process.standardError = FileHandle.standardError
                 try process.run()
@@ -71,6 +90,7 @@ extension MeshScaleCLI.ControlPlane {
                 try process.run()
                 try ConfigManager.shared.savePid(process.processIdentifier, for: service)
                 print("✅ Control plane started (PID: \(process.processIdentifier))")
+                print("   Source: \(resolvedExecutable.source)")
                 print("   Logs: \(logFile.path)")
             }
         }
@@ -125,18 +145,14 @@ extension MeshScaleCLI.ControlPlane {
             commandName: "status",
             abstract: "Check control plane status"
         )
+
+        @Flag(name: .long, help: "Emit JSON instead of a human-readable summary")
+        var json: Bool = false
         
         func run() throws {
-            let service = "control-plane"
-            guard let pid = ConfigManager.shared.loadPid(for: service) else {
-                print("Control plane is not running")
-                return
-            }
-            if ConfigManager.shared.isProcessRunning(pid) {
-                print("✅ Control plane running (PID: \(pid))")
-            } else {
-                print("❌ Control plane not running (stale PID)")
-            }
+            var status = MeshScaleCLI.Status()
+            status.json = json
+            try status.run()
         }
     }
 }

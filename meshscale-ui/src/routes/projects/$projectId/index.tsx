@@ -1,7 +1,8 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router"
 import { useState } from "react"
-import { useLiveQuery } from "dexie-react-hooks"
 import {
+  AlertCircle,
+  Boxes,
   Globe,
   Gamepad2,
   Code2,
@@ -39,9 +40,13 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { db } from "@/lib/db"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { RelativeTime } from "@/components/relative-time"
+import { useControlPlaneData } from "@/hooks/use-control-plane-data"
+import type { ControlPlaneRuntimeOutput } from "@/lib/api"
 import type {
   Project,
+  ProjectApp,
   Deployment,
   ProjectType,
   ProjectStatus,
@@ -54,6 +59,7 @@ export const Route = createFileRoute("/projects/$projectId/")({
 
 type NavSection =
   | "overview"
+  | "apps"
   | "deployments"
   | "logs"
   | "environment"
@@ -63,6 +69,11 @@ const typeConfig: Record<
   ProjectType,
   { icon: React.ElementType; label: string; color: string }
 > = {
+  project: {
+    icon: Boxes,
+    label: "Project",
+    color: "text-sky-600 bg-sky-500/10",
+  },
   website: {
     icon: Globe,
     label: "Website",
@@ -132,6 +143,7 @@ const deploymentStatusConfig: Record<
 const navItems: { id: NavSection; label: string; icon: React.ElementType }[] =
   [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "apps", label: "Apps", icon: Server },
     { id: "deployments", label: "Deployments", icon: Rocket },
     { id: "logs", label: "Logs", icon: ScrollText },
     { id: "environment", label: "Environment", icon: KeyRound },
@@ -142,22 +154,24 @@ function ProjectDetail() {
   const { projectId } = Route.useParams()
   const [activeSection, setActiveSection] = useState<NavSection>("overview")
 
-  const project = useLiveQuery(
-    () => db.projects.get(projectId),
-    [projectId]
+  const {
+    snapshot,
+    projects,
+    deployments: allDeployments,
+    isLoading,
+    error,
+    refetch,
+  } = useControlPlaneData()
+  const project = projects.find((candidate) => candidate.id === projectId)
+  const deployments = allDeployments.filter(
+    (deployment) => deployment.projectId === projectId,
   )
-  const deployments = useLiveQuery(
-    () =>
-      db.deployments
-        .where("projectId")
-        .equals(projectId)
-        .reverse()
-        .sortBy("id"),
-    [projectId]
-  ) ?? []
+  const runtimeOutputs = snapshot?.runtimeOutputs ?? []
+  const apps = project?.apps ?? []
+  const appCount = project?.appCount ?? apps.length
 
   // Still loading
-  if (project === undefined) {
+  if (isLoading && !project) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -165,8 +179,34 @@ function ProjectDetail() {
     )
   }
 
+  if (error && !project) {
+    return (
+      <div className="flex h-screen items-center justify-center p-6">
+        <div className="w-full max-w-lg">
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Control plane unavailable</AlertTitle>
+            <AlertDescription>
+              <div className="flex flex-col gap-2">
+                <p>{error}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => void refetch()}
+                >
+                  Retry
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    )
+  }
+
   // Not found
-  if (project === null) {
+  if (!project) {
     throw notFound()
   }
 
@@ -269,12 +309,17 @@ function ProjectDetail() {
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="font-medium text-foreground">Instances</span>
+                <span className="font-medium text-foreground">Apps</span>
                 <div className="flex items-center gap-1.5">
                   <Server className="size-3" />
-                  {project.instances > 0
-                    ? `${project.instances} running`
-                    : "None running"}
+                  {appCount} deployed
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-foreground">Containers</span>
+                <div className="flex items-center gap-1.5">
+                  <Boxes className="size-3" />
+                  {project.instances}/{project.desiredInstances ?? project.instances} running
                 </div>
               </div>
               <div className="flex flex-col gap-1">
@@ -297,14 +342,47 @@ function ProjectDetail() {
                   </a>
                 </div>
               )}
+              {project.image && (
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium text-foreground">Image</span>
+                  <span className="truncate">{project.image}</span>
+                </div>
+              )}
             </div>
           </aside>
 
           {/* Main content */}
           <main className="flex-1 overflow-y-auto">
-            {activeSection === "overview" && (
-              <OverviewSection project={project} deployments={deployments} />
+            {error && (
+              <div className="p-6 pb-0">
+                <Alert variant="destructive">
+                  <AlertCircle className="size-4" />
+                  <AlertTitle>Showing the last known project state</AlertTitle>
+                  <AlertDescription>
+                    <div className="flex flex-col gap-2">
+                      <p>{error}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-fit"
+                        onClick={() => void refetch()}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              </div>
             )}
+            {activeSection === "overview" && (
+              <OverviewSection
+                project={project}
+                apps={apps}
+                deployments={deployments}
+                runtimeOutputs={runtimeOutputs}
+              />
+            )}
+            {activeSection === "apps" && <AppsSection apps={apps} />}
             {activeSection === "deployments" && (
               <DeploymentsSection
                 project={project}
@@ -338,12 +416,17 @@ function ProjectDetail() {
 
 function OverviewSection({
   project,
+  apps,
   deployments,
+  runtimeOutputs,
 }: {
   project: Project
+  apps: ProjectApp[]
   deployments: Deployment[]
+  runtimeOutputs: ControlPlaneRuntimeOutput[]
 }) {
   const status = statusConfig[project.status]
+  const appCount = project.appCount ?? apps.length
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -383,10 +466,10 @@ function OverviewSection({
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5">
               <Cpu className="size-3.5" />
-              CPU Usage
+              Reserved CPU
             </CardDescription>
             <CardTitle className="text-xl tabular-nums">
-              {project.status === "running" ? `${project.cpu}%` : "—"}
+              {project.cpu} CPU
             </CardTitle>
           </CardHeader>
         </Card>
@@ -395,68 +478,129 @@ function OverviewSection({
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5">
               <MemoryStick className="size-3.5" />
-              Memory
+              Reserved Memory
             </CardDescription>
             <CardTitle className="text-xl tabular-nums">
-              {project.status === "running" ? `${project.memory}%` : "—"}
+              {project.memory} GB
             </CardTitle>
           </CardHeader>
         </Card>
       </div>
 
-      {/* Resource bars */}
-      {project.status === "running" && (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Runtime Details</CardTitle>
+          <CardDescription>
+            Project-level state for the deployed Swift app
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <InfoStat
+            label="Apps"
+            value={`${appCount}`}
+          />
+          <InfoStat
+            label="Containers"
+            value={`${project.instances}/${project.desiredInstances ?? project.instances}`}
+          />
+          <InfoStat
+            label="Domain"
+            value={project.url?.replace(/^https?:\/\//, "") ?? "not set"}
+          />
+          <InfoStat
+            label="Reserved"
+            value={`${project.cpu} CPU / ${project.memory} GB`}
+          />
+        </CardContent>
+      </Card>
+
+      {apps.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Resource Usage
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Apps</CardTitle>
             <CardDescription>
-              Live resource utilization across {project.instances} instance
-              {project.instances !== 1 ? "s" : ""}
+              Resources declared by your Swift app and the containers behind them
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">CPU</span>
-                <span className="font-medium tabular-nums">{project.cpu}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {apps.map((app) => {
+              const appStatus = statusConfig[app.status]
+              return (
                 <div
-                  className={`h-full rounded-full transition-all ${
-                    project.cpu > 80
-                      ? "bg-red-500"
-                      : project.cpu > 60
-                        ? "bg-yellow-500"
-                        : "bg-green-500"
-                  }`}
-                  style={{ width: `${project.cpu}%` }}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Memory</span>
-                <span className="font-medium tabular-nums">
-                  {project.memory}%
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    project.memory > 80
-                      ? "bg-red-500"
-                      : project.memory > 60
-                        ? "bg-yellow-500"
-                        : "bg-blue-500"
-                  }`}
-                  style={{ width: `${project.memory}%` }}
-                />
-              </div>
-            </div>
+                  key={app.id}
+                  className="rounded-lg border bg-muted/20 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{app.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {app.description}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className={`flex items-center gap-1.5 ${appStatus.badge}`}
+                    >
+                      <span className={`size-1.5 rounded-full ${appStatus.dot}`} />
+                      {appStatus.label}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md border bg-background/70 p-2">
+                      <div className="text-muted-foreground">Containers</div>
+                      <div className="mt-1 font-medium">
+                        {app.instances}/{app.desiredInstances}
+                      </div>
+                    </div>
+                    <div className="rounded-md border bg-background/70 p-2">
+                      <div className="text-muted-foreground">Ports</div>
+                      <div className="mt-1 font-medium">
+                        {app.ports?.length ? app.ports.join(", ") : "none"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </CardContent>
         </Card>
+      )}
+
+      {runtimeOutputs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Swift Runtime Outputs</CardTitle>
+            <CardDescription>
+              Values published by your deployed Swift app during each tick
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {runtimeOutputs.map((output) => (
+              <div
+                key={output.key}
+                className="rounded-lg border bg-muted/20 p-4"
+              >
+                <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  {output.key}
+                </div>
+                <div className="mt-2 break-all font-mono text-sm text-foreground">
+                  {output.value}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Updated {new Date(output.updatedAt).toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {project.lastError && (
+        <Alert variant="destructive">
+          <AlertCircle className="size-4" />
+          <AlertTitle>Latest worker error</AlertTitle>
+          <AlertDescription>{project.lastError}</AlertDescription>
+        </Alert>
       )}
 
       {/* Recent deployments */}
@@ -514,7 +658,7 @@ function OverviewSection({
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
-                  <span>{deployment.createdAt}</span>
+                  <RelativeTime value={deployment.createdAt} fallback="never" />
                   <span>{deployment.duration}</span>
                 </div>
               </div>
@@ -522,6 +666,134 @@ function OverviewSection({
           })}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function AppsSection({ apps }: { apps: ProjectApp[] }) {
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <div>
+        <h2 className="text-lg font-semibold">Apps</h2>
+        <p className="text-sm text-muted-foreground">
+          All apps declared by the deployed Swift source, plus their actual containers
+        </p>
+      </div>
+
+      {apps.length === 0 && (
+        <Card>
+          <CardContent className="px-6 py-8 text-sm text-muted-foreground">
+            No apps have been declared yet.
+          </CardContent>
+        </Card>
+      )}
+
+      {apps.map((app) => {
+        const type = typeConfig[app.type]
+        const status = statusConfig[app.status]
+        const TypeIcon = type.icon
+
+        return (
+          <Card key={app.id}>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div
+                    className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg ${type.color}`}
+                  >
+                    <TypeIcon className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <CardTitle className="truncate text-base">{app.name}</CardTitle>
+                    <CardDescription className="mt-1">
+                      {app.description}
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Badge
+                    variant="secondary"
+                    className={`flex items-center gap-1.5 ${status.badge}`}
+                  >
+                    <span className={`size-1.5 rounded-full ${status.dot}`} />
+                    {status.label}
+                  </Badge>
+                  <Badge variant="outline">{type.label}</Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-4">
+                <InfoStat
+                  label="Containers"
+                  value={`${app.instances}/${app.desiredInstances}`}
+                />
+                <InfoStat
+                  label="Region"
+                  value={app.region}
+                />
+                <InfoStat
+                  label="Ports"
+                  value={app.ports?.length ? app.ports.join(", ") : "none"}
+                />
+                <InfoStat
+                  label="Image"
+                  value={app.image ?? "unspecified"}
+                />
+              </div>
+
+              {app.lastError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="size-4" />
+                  <AlertTitle>Latest app error</AlertTitle>
+                  <AlertDescription>{app.lastError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="rounded-lg border">
+                <div className="border-b px-4 py-3 text-sm font-medium">
+                  Containers
+                </div>
+                <div className="flex flex-col">
+                  {app.containers.map((container, index) => (
+                    <div
+                      key={container.id}
+                      className={`flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center ${
+                        index !== app.containers.length - 1 ? "border-b" : ""
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-sm">{container.id}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {container.workerRegion
+                            ? `${container.workerRegion}${container.workerId ? ` • ${container.workerId}` : ""}`
+                            : container.workerId ?? "unassigned"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge
+                          variant="outline"
+                          className={containerStatusClassName(container.status)}
+                        >
+                          {container.status}
+                        </Badge>
+                        {container.image && (
+                          <Badge variant="outline">{container.image}</Badge>
+                        )}
+                        {container.lastError && (
+                          <span className="text-red-600 dark:text-red-400">
+                            {container.lastError}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
     </div>
   )
 }
@@ -588,7 +860,7 @@ function DeploymentsSection({
                   <Badge variant="secondary" className={`${ds.color} text-xs`}>
                     {ds.label}
                   </Badge>
-                  <span>{deployment.createdAt}</span>
+                  <RelativeTime value={deployment.createdAt} fallback="never" />
                   {deployment.duration !== "-" && (
                     <span className="text-muted-foreground/70">
                       {deployment.duration}
@@ -600,6 +872,17 @@ function DeploymentsSection({
           })}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function InfoStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4">
+      <div className="text-muted-foreground text-xs uppercase tracking-wide">
+        {label}
+      </div>
+      <div className="mt-2 text-sm font-medium break-all">{value}</div>
     </div>
   )
 }
@@ -625,4 +908,19 @@ function PlaceholderSection({
       </Button>
     </div>
   )
+}
+
+function containerStatusClassName(status: string) {
+  switch (status) {
+    case "running":
+      return "border-green-500/40 text-green-600 dark:text-green-400"
+    case "failed":
+      return "border-red-500/40 text-red-600 dark:text-red-400"
+    case "assigned":
+    case "starting":
+    case "created":
+      return "border-yellow-500/40 text-yellow-600 dark:text-yellow-400"
+    default:
+      return "text-muted-foreground"
+  }
 }

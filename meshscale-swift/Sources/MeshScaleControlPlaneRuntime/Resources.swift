@@ -20,6 +20,7 @@ public protocol Resource {
 // MARK: - Database Resources
 
 public protocol DatabaseResource: Resource {
+    var image: String { get }
     var cpu: Int { get }
     var memory: Size { get }
     var storage: StorageType { get }
@@ -57,6 +58,16 @@ public protocol HTTPService: ServiceResource {
 public protocol BackgroundWorker: ServiceResource {}
 
 public protocol WebService: ServiceResource {
+    var port: Int { get }
+}
+
+public protocol NetBirdDashboard: ServiceResource {
+    var publicHost: String? { get }
+    var dashboardHostPort: Int { get }
+    var managementHostPort: Int { get }
+}
+
+public protocol MeshScaleDashboard: ServiceResource {
     var port: Int { get }
 }
 
@@ -99,6 +110,18 @@ extension DatabaseResource {
     public var sharding: ShardingConfig? { nil }
 }
 
+extension PostgresDatabase {
+    public var image: String { "postgres:16-alpine" }
+}
+
+extension MySQLDatabase {
+    public var image: String { "mysql:8" }
+}
+
+extension MongoDatabase {
+    public var image: String { "mongo:7" }
+}
+
 extension CacheResource {
     public var latencySensitivity: LatencySensitivity { .high }
 }
@@ -113,6 +136,28 @@ extension HTTPService {
 
 extension WebService {
     public var port: Int { 3000 }
+}
+
+extension NetBirdDashboard {
+    public var replicas: Int { 1 }
+    public var image: String { "netbirdio/dashboard:latest" }
+    public var cpu: Int { 1 }
+    public var memory: Size { 1.gb }
+    public var latencySensitivity: LatencySensitivity { .medium }
+    public var publicHost: String? { nil }
+    public var dashboardHostPort: Int { 18080 }
+    public var managementHostPort: Int { 18081 }
+    public var env: [String: String] { [:] }
+}
+
+extension MeshScaleDashboard {
+    public var replicas: Int { 1 }
+    public var image: String { "nginx:alpine" }
+    public var cpu: Int { 1 }
+    public var memory: Size { 1.gb }
+    public var latencySensitivity: LatencySensitivity { .medium }
+    public var port: Int { 18480 }
+    public var env: [String: String] { [:] }
 }
 
 extension StaticSite {

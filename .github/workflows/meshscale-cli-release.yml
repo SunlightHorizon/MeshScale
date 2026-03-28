@@ -1,0 +1,209 @@
+name: MeshScale CLI Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to publish, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: darwin
+            arch: arm64
+          - runner: ubuntu-24.04
+            platform: linux
+            arch: amd64
+
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.2"
+
+      - name: Install FoundationDB dependencies on macOS
+        if: matrix.platform == 'darwin'
+        run: |
+          brew update
+          brew install foundationdb
+
+      - name: Install FoundationDB dependencies on Linux
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl
+          curl -L --retry 5 --retry-delay 2 \
+            -o /tmp/foundationdb-clients_7.3.69-1_amd64.deb \
+            https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients_7.3.69-1_amd64.deb
+          curl -L --retry 5 --retry-delay 2 \
+            -o /tmp/foundationdb-server_7.3.69-1_amd64.deb \
+            https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-server_7.3.69-1_amd64.deb
+          sudo dpkg -i /tmp/foundationdb-clients_7.3.69-1_amd64.deb /tmp/foundationdb-server_7.3.69-1_amd64.deb
+
+      - name: Build MeshScale binaries
+        working-directory: meshscale-swift
+        run: |
+          set -euo pipefail
+          swift build -c release \
+            --product MeshScaleCLI \
+            --product MeshScaleControlPlane \
+            --product MeshScaleWorker
+
+      - name: Package MeshScale CLI and toolchains
+        working-directory: meshscale-swift
+        run: |
+          set -euo pipefail
+          BIN_DIR="$(swift build -c release --show-bin-path)"
+          DIST_DIR="$PWD/release-dist"
+          ASSET_DIR="$PWD/release-assets"
+          TOOLCHAIN_ROOT="$(
+            python3 - <<'PY'
+            import json
+            import os
+            import shutil
+            import subprocess
+            import sys
+
+            if sys.platform == "darwin":
+                info = json.loads(subprocess.check_output(["swiftc", "-print-target-info"], text=True))
+                runtime_resource_path = info["paths"]["runtimeResourcePath"]
+                toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_resource_path)))
+            else:
+                swift_path = os.path.realpath(shutil.which("swift"))
+                toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(swift_path)))
+
+            print(toolchain_root)
+            PY
+          )"
+
+          rm -rf "$DIST_DIR" "$ASSET_DIR"
+          mkdir -p \
+            "$DIST_DIR/cli" \
+            "$DIST_DIR/controlplane/foundationdb/include" \
+            "$DIST_DIR/controlplane/foundationdb/lib" \
+            "$DIST_DIR/worker/foundationdb/include" \
+            "$DIST_DIR/worker/foundationdb/lib" \
+            "$ASSET_DIR"
+
+          cp "$BIN_DIR/MeshScaleCLI" "$DIST_DIR/cli/meshscale"
+          cp "$BIN_DIR/MeshScaleControlPlane" "$DIST_DIR/controlplane/MeshScaleControlPlane"
+          cp "$BIN_DIR/MeshScaleWorker" "$DIST_DIR/worker/MeshScaleWorker"
+
+          rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/controlplane/swift-toolchain/"
+          rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/worker/swift-toolchain/"
+
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            rsync -a /usr/local/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
+            rsync -a /usr/local/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
+            cp -a /usr/local/lib/libfdb_c* "$DIST_DIR/controlplane/foundationdb/lib/"
+            cp -a /usr/local/lib/libfdb_c* "$DIST_DIR/worker/foundationdb/lib/"
+          else
+            rsync -a /usr/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
+            rsync -a /usr/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
+            find /usr/lib /usr/lib64 /lib /lib64 -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 2>/dev/null | \
+              while IFS= read -r -d '' lib; do
+                cp -a "$lib" "$DIST_DIR/controlplane/foundationdb/lib/"
+                cp -a "$lib" "$DIST_DIR/worker/foundationdb/lib/"
+              done
+          fi
+
+          tar -C "$DIST_DIR/cli" -czf "$ASSET_DIR/meshscale-cli-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" meshscale
+          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-toolchain-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" controlplane
+          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-toolchain-worker-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" worker
+
+      - name: Upload packaged assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshscale-assets-${{ matrix.platform }}-${{ matrix.arch }}
+          path: meshscale-swift/release-assets/*
+
+  publish:
+    name: Publish Release Assets
+    runs-on: ubuntu-24.04
+    needs: build
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+
+    steps:
+      - name: Download packaged assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate toolchain manifest
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          repository = os.environ["REPOSITORY"]
+          assets_dir = Path("release-assets")
+
+          artifacts = []
+          for archive in sorted(assets_dir.glob("meshscale-toolchain-*.tar.gz")):
+            parts = archive.name.removesuffix(".tar.gz").split("-")
+            role = parts[2]
+            platform = parts[3]
+            arch = parts[4]
+            checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+            executable = "MeshScaleControlPlane" if role == "controlplane" else "MeshScaleWorker"
+            artifacts.append(
+              {
+                "version": version,
+                "role": role,
+                "platform": platform,
+                "arch": arch,
+                "url": f"https://github.com/{repository}/releases/download/{version}/{archive.name}",
+                "sha256": checksum,
+                "executables": [executable],
+              }
+            )
+
+          manifest = {
+            "schemaVersion": 1,
+            "latestVersion": version,
+            "generatedAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "artifacts": artifacts,
+          }
+
+          output_path = assets_dir / "meshscale-toolchains.json"
+          output_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          generate_release_notes: true
+          files: |
+            release-assets/*.tar.gz
+            release-assets/meshscale-toolchains.json

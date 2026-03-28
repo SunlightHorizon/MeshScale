@@ -1,5 +1,13 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import ArgumentParser
+
+private final class DeploymentResponseBox: @unchecked Sendable {
+    var statusCode: Int?
+    var error: Error?
+}
 
 extension MeshScaleCLI {
     struct Deploy: ParsableCommand {
@@ -16,7 +24,7 @@ extension MeshScaleCLI {
                 print("❌ File not found: \(file)")
                 throw ExitCode.failure
             }
-            let source = try String(contentsOfFile: file, encoding: .utf8)
+            let payload = try Data(contentsOf: URL(fileURLWithPath: file))
             
             guard ConfigManager.shared.hasAuth() else {
                 print("❌ Not authenticated. Run 'meshscale auth login' first.")
@@ -32,38 +40,42 @@ extension MeshScaleCLI {
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+            let isJSON = URL(fileURLWithPath: file).pathExtension.lowercased() == "json"
+            request.setValue(isJSON ? "application/json" : "text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(auth.token)", forHTTPHeaderField: "Authorization")
-            request.httpBody = source.data(using: .utf8)
+            request.httpBody = payload
             
             let semaphore = DispatchSemaphore(value: 0)
-            var statusCode: Int?
-            var error: Error?
+            let responseBox = DeploymentResponseBox()
             URLSession.shared.dataTask(with: request) { _, response, err in
-                error = err
+                responseBox.error = err
                 if let http = response as? HTTPURLResponse {
-                    statusCode = http.statusCode
+                    responseBox.statusCode = http.statusCode
                 }
                 semaphore.signal()
             }.resume()
             semaphore.wait()
             
-            if let error = error {
+            if let error = responseBox.error {
                 print("❌ Failed to contact control plane: \(error)")
                 throw ExitCode.failure
             }
-            guard let code = statusCode, (200..<300).contains(code) else {
-                print("❌ Control plane returned non-success status: \(statusCode ?? 0)")
+            guard let code = responseBox.statusCode, (200..<300).contains(code) else {
+                print("❌ Control plane returned non-success status: \(responseBox.statusCode ?? 0)")
                 throw ExitCode.failure
             }
-            print("✓ Deploy request accepted by control plane")
+            if isJSON {
+                print("✓ Manifest deploy accepted by control plane")
+            } else {
+                print("✓ Source deploy accepted by control plane")
+            }
         }
     }
     
     struct Demo: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "demo",
-            abstract: "Deploy the built-in example (Examples/infrastructure.swift)"
+            abstract: "Deploy the built-in Swift example (Examples/infrastructure.swift)"
         )
         
         func run() throws {

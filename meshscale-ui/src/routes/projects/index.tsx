@@ -3,6 +3,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "../../components/ui/sidebar"
+import { useControlPlaneData } from "@/hooks/use-control-plane-data"
 import { AppSidebar } from "../dashboard/components/sidebar/app-sidebar"
 import { ProjectsHeader } from "./components/projects-header"
 import { ProjectsContent } from "./components/projects-content"
@@ -12,6 +13,8 @@ export const Route = createFileRoute('/projects/')({
 })
 
 function Projects() {
+  const { projects, isLoading, error, refetch } = useControlPlaneData()
+
   return (
     <SidebarProvider
       className="flex h-screen"
@@ -26,7 +29,12 @@ function Projects() {
       <SidebarInset className="flex flex-col overflow-hidden">
         <ProjectsHeader />
         <div className="flex flex-1 flex-col overflow-y-auto">
-          <ProjectsContent />
+          <ProjectsContent
+            projects={projects}
+            isLoading={isLoading}
+            error={error}
+            onRetry={refetch}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>

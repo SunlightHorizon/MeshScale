@@ -1,32 +1,26 @@
 import * as React from "react"
+import { Link } from "@tanstack/react-router"
 import {
+  AlertCircle,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  CheckCircle2,
-  MoreVertical,
-  GripVertical,
   Columns3,
+  GripVertical,
   Loader2,
-  Plus,
-  TrendingUp,
+  MoreVertical,
+  RefreshCw,
+  Server,
+  XCircle,
 } from "lucide-react"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
-import { z } from "zod"
-import { useLiveQuery } from "dexie-react-hooks"
-import { db } from "@/lib/db"
-
 import { useIsMobile } from "@/hooks/use-mobile"
+import { RelativeTime } from "@/components/relative-time"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Drawer,
@@ -46,7 +40,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -55,7 +48,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import {
   Table,
   TableBody,
@@ -70,40 +62,83 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
+import type { Deployment, Project } from "@/routes/projects/data"
 
-export const schema = z.object({
-  id: z.number(),
-  service: z.string(),
-  type: z.string(),
-  status: z.string(),
-  region: z.string(),
-  uptime: z.string(),
-  deployedBy: z.string(),
-})
+interface DataTableProps {
+  projects: Project[]
+  deployments: Deployment[]
+  isLoading: boolean
+  error: string | null
+  onRetry: () => Promise<void>
+}
 
-export function DataTable() {
-  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? []
+interface ServiceTableItem {
+  id: number
+  projectId: string
+  service: string
+  description: string
+  type: string
+  status: "Running" | "Stopped" | "Deploying" | "Error"
+  region: string
+  uptime: string
+  deployedBy: string
+  desiredInstances: number
+  instances: number
+  reservedCpu: string
+  reservedMemory: string
+  image?: string
+  ports: string
+  url?: string
+  lastError?: string
+}
 
-  // Map Project rows to the table schema shape
-  const data: z.infer<typeof schema>[] = projects.map((p, i) => ({
-    id: i + 1,
-    service: p.name,
-    type: p.type
+const statusBadgeClassName: Record<ServiceTableItem["status"], string> = {
+  Running: "text-green-600 dark:text-green-400",
+  Stopped: "text-muted-foreground",
+  Deploying: "text-yellow-600 dark:text-yellow-400",
+  Error: "text-red-600 dark:text-red-400",
+}
+
+export function DataTable({
+  projects,
+  deployments,
+  isLoading,
+  error,
+  onRetry,
+}: DataTableProps) {
+  const data: ServiceTableItem[] = projects.map((project, index) => ({
+    id: index + 1,
+    projectId: project.id,
+    service: project.name,
+    description: project.description,
+    type: project.type
       .split("-")
-      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .map((part) => part[0].toUpperCase() + part.slice(1))
       .join(" "),
     status:
-      p.status === "running"
+      project.status === "running"
         ? "Running"
-        : p.status === "stopped"
+        : project.status === "stopped"
           ? "Stopped"
-          : p.status === "deploying"
+          : project.status === "deploying"
             ? "Deploying"
             : "Error",
-    region: p.region,
-    uptime: p.uptime,
-    deployedBy: p.lastDeployedBy,
+    region: project.region,
+    uptime: project.uptime,
+    deployedBy: project.lastDeployedBy,
+    desiredInstances: project.desiredInstances ?? project.instances,
+    instances: project.instances,
+    reservedCpu: `${project.cpu} CPU`,
+    reservedMemory: `${project.memory} GB`,
+    image: project.image,
+    ports:
+      project.ports && project.ports.length > 0
+        ? project.ports.join(", ")
+        : "none",
+    url: project.url,
+    lastError: project.lastError,
   }))
+
   const [selectedRows, setSelectedRows] = React.useState<Set<number>>(new Set())
   const [currentPage, setCurrentPage] = React.useState(0)
   const [pageSize, setPageSize] = React.useState(10)
@@ -116,39 +151,46 @@ export function DataTable() {
     deployedBy: true,
   })
 
-  const totalPages = Math.ceil(data.length / pageSize)
+  const totalPages = Math.max(1, Math.ceil(data.length / pageSize))
   const startIndex = currentPage * pageSize
-  const endIndex = startIndex + pageSize
-  const currentData = data.slice(startIndex, endIndex)
+  const currentData = data.slice(startIndex, startIndex + pageSize)
+  const failingProjects = projects.filter((project) => project.status === "error").length
+
+  React.useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages - 1))
+  }, [totalPages])
 
   const toggleRow = (id: number) => {
-    const newSelected = new Set(selectedRows)
-    if (newSelected.has(id)) {
-      newSelected.delete(id)
-    } else {
-      newSelected.add(id)
-    }
-    setSelectedRows(newSelected)
+    setSelectedRows((current) => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
   }
 
   const toggleAllRows = () => {
-    if (selectedRows.size === currentData.length) {
-      setSelectedRows(new Set())
-    } else {
-      setSelectedRows(new Set(currentData.map(item => item.id)))
-    }
+    setSelectedRows((current) => {
+      if (currentData.length > 0 && current.size === currentData.length) {
+        return new Set()
+      }
+      return new Set(currentData.map((item) => item.id))
+    })
   }
 
   return (
     <Tabs
-      defaultValue="outline"
+      defaultValue="services"
       className="w-full flex-col justify-start gap-6"
     >
       <div className="flex items-center justify-between px-4 lg:px-6">
         <Label htmlFor="view-selector" className="sr-only">
           View
         </Label>
-        <Select defaultValue="outline">
+        <Select defaultValue="services">
           <SelectTrigger
             className="flex w-fit @4xl/main:hidden"
             size="sm"
@@ -157,21 +199,15 @@ export function DataTable() {
             <SelectValue placeholder="Select a view" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="outline">Services</SelectItem>
-            <SelectItem value="past-performance">Deployments</SelectItem>
-            <SelectItem value="key-personnel">Alerts</SelectItem>
-            <SelectItem value="focus-documents">Costs</SelectItem>
+            <SelectItem value="services">Projects</SelectItem>
+            <SelectItem value="rollouts">Rollouts</SelectItem>
           </SelectContent>
         </Select>
-        <TabsList className="**:data-[slot=badge]:bg-muted-foreground/30 hidden **:data-[slot=badge]:size-5 **:data-[slot=badge]:rounded-full **:data-[slot=badge]:px-1 @4xl/main:flex">
-          <TabsTrigger value="outline">Services</TabsTrigger>
-          <TabsTrigger value="past-performance">
-            Deployments <Badge variant="secondary">3</Badge>
+        <TabsList className="hidden @4xl/main:flex">
+          <TabsTrigger value="services">Projects</TabsTrigger>
+          <TabsTrigger value="rollouts">
+            Rollouts <Badge variant="secondary">{deployments.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="key-personnel">
-            Alerts <Badge variant="secondary">2</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="focus-documents">Costs</TabsTrigger>
         </TabsList>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -189,25 +225,37 @@ export function DataTable() {
                   key={key}
                   className="capitalize"
                   checked={value}
-                  onCheckedChange={(checked) =>
-                    setVisibleColumns(prev => ({ ...prev, [key]: checked }))
-                  }
+                  onCheckedChange={(checked) => {
+                    setVisibleColumns((current) => ({
+                      ...current,
+                      [key]: checked,
+                    }))
+                  }}
                 >
                   {key}
                 </DropdownMenuCheckboxItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm">
-            <Plus />
-            <span className="hidden lg:inline">Add Service</span>
+          <Button variant="outline" size="sm" onClick={() => void onRetry()}>
+            <RefreshCw />
+            <span className="hidden lg:inline">Refresh</span>
           </Button>
         </div>
       </div>
+
       <TabsContent
-        value="outline"
+        value="services"
         className="relative flex flex-col gap-4 overflow-auto px-4 lg:px-6"
       >
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Control plane refresh failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader className="bg-muted sticky top-0 z-10">
@@ -218,23 +266,37 @@ export function DataTable() {
                 <TableHead className="w-8">
                   <div className="flex items-center justify-center">
                     <Checkbox
-                      checked={selectedRows.size === currentData.length && currentData.length > 0}
+                      checked={
+                        currentData.length > 0 &&
+                        selectedRows.size === currentData.length
+                      }
                       onCheckedChange={toggleAllRows}
                       aria-label="Select all"
                     />
                   </div>
                 </TableHead>
-                {visibleColumns.service && <TableHead>Service</TableHead>}
+                {visibleColumns.service && <TableHead>Project</TableHead>}
                 {visibleColumns.type && <TableHead>Type</TableHead>}
                 {visibleColumns.status && <TableHead>Status</TableHead>}
                 {visibleColumns.region && <TableHead>Region</TableHead>}
-                {visibleColumns.uptime && <TableHead className="text-right">Uptime</TableHead>}
-                {visibleColumns.deployedBy && <TableHead>Deployed By</TableHead>}
-                <TableHead className="w-8"></TableHead>
+                {visibleColumns.uptime && (
+                  <TableHead className="text-right">Container State</TableHead>
+                )}
+                {visibleColumns.deployedBy && <TableHead>Managed By</TableHead>}
+                <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {currentData.length ? (
+              {isLoading && data.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-24 text-center">
+                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />
+                      Loading projects...
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : currentData.length > 0 ? (
                 currentData.map((item) => (
                   <TableRow
                     key={item.id}
@@ -265,42 +327,35 @@ export function DataTable() {
                     )}
                     {visibleColumns.type && (
                       <TableCell>
-                        <div className="w-32">
-                          <Badge variant="outline" className="text-muted-foreground px-1.5">
-                            {item.type}
-                          </Badge>
-                        </div>
+                        <Badge variant="outline" className="text-muted-foreground px-1.5">
+                          {item.type}
+                        </Badge>
                       </TableCell>
                     )}
                     {visibleColumns.status && (
                       <TableCell>
-                        <Badge variant="outline" className="text-muted-foreground px-1.5">
-                          {item.status === "Running" ? (
-                            <CheckCircle2 className="fill-green-500 dark:fill-green-400" />
-                          ) : item.status === "Deploying" ? (
-                            <Loader2 className="animate-spin text-yellow-500" />
-                          ) : (
-                            <Loader2 />
-                          )}
+                        <Badge
+                          variant="outline"
+                          className={`px-1.5 ${statusBadgeClassName[item.status]}`}
+                        >
+                          <StatusIcon status={item.status} />
                           {item.status}
                         </Badge>
                       </TableCell>
                     )}
                     {visibleColumns.region && (
                       <TableCell>
-                        <span className="text-muted-foreground text-sm">{item.region}</span>
+                        <span className="text-muted-foreground text-sm">
+                          {item.region}
+                        </span>
                       </TableCell>
                     )}
                     {visibleColumns.uptime && (
                       <TableCell className="text-right tabular-nums">
-                        {item.uptime}
+                        {item.instances}/{item.desiredInstances}
                       </TableCell>
                     )}
-                    {visibleColumns.deployedBy && (
-                      <TableCell>
-                        {item.deployedBy}
-                      </TableCell>
-                    )}
+                    {visibleColumns.deployedBy && <TableCell>{item.deployedBy}</TableCell>}
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -313,12 +368,26 @@ export function DataTable() {
                             <span className="sr-only">Open menu</span>
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          <DropdownMenuItem>Edit</DropdownMenuItem>
-                          <DropdownMenuItem>Make a copy</DropdownMenuItem>
-                          <DropdownMenuItem>Favorite</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem asChild>
+                            <Link
+                              to="/projects/$projectId"
+                              params={{ projectId: item.projectId }}
+                            >
+                              View details
+                            </Link>
+                          </DropdownMenuItem>
+                          {item.url && (
+                            <DropdownMenuItem asChild>
+                              <a href={item.url} target="_blank" rel="noreferrer">
+                                Open project
+                              </a>
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem>Delete</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => void onRetry()}>
+                            Refresh status
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -326,14 +395,15 @@ export function DataTable() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center">
-                    No results.
+                  <TableCell colSpan={8} className="h-24 text-center">
+                    No projects reported by the control plane yet.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
+
         <div className="flex items-center justify-between px-4">
           <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">
             {selectedRows.size} of {data.length} row(s) selected.
@@ -379,7 +449,7 @@ export function DataTable() {
                 variant="outline"
                 className="size-8"
                 size="icon"
-                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                onClick={() => setCurrentPage((page) => Math.max(0, page - 1))}
                 disabled={currentPage === 0}
               >
                 <span className="sr-only">Go to previous page</span>
@@ -389,7 +459,9 @@ export function DataTable() {
                 variant="outline"
                 className="size-8"
                 size="icon"
-                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages - 1, page + 1))
+                }
                 disabled={currentPage >= totalPages - 1}
               >
                 <span className="sr-only">Go to next page</span>
@@ -409,183 +481,128 @@ export function DataTable() {
           </div>
         </div>
       </TabsContent>
-      <TabsContent
-        value="past-performance"
-        className="flex flex-col px-4 lg:px-6"
-      >
-        <div className="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
-      </TabsContent>
-      <TabsContent value="key-personnel" className="flex flex-col px-4 lg:px-6">
-        <div className="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
-      </TabsContent>
-      <TabsContent
-        value="focus-documents"
-        className="flex flex-col px-4 lg:px-6"
-      >
-        <div className="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
+
+      <TabsContent value="rollouts" className="flex flex-col gap-4 px-4 lg:px-6">
+        <div className="rounded-lg border">
+          {deployments.length > 0 ? (
+            deployments.map((deployment, index) => (
+              <div
+                key={deployment.id}
+                className={`flex items-center justify-between gap-4 px-4 py-4 ${
+                  index !== deployments.length - 1 ? "border-b" : ""
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {deployment.message}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {deployment.branch} • {deployment.commit} • {deployment.deployedBy}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className={
+                      deployment.status === "success"
+                        ? "text-green-600 dark:text-green-400"
+                        : deployment.status === "failed"
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-yellow-600 dark:text-yellow-400"
+                    }
+                  >
+                    <StatusIcon
+                      status={
+                        deployment.status === "success"
+                          ? "Running"
+                          : deployment.status === "failed"
+                            ? "Error"
+                            : "Deploying"
+                      }
+                    />
+                    {deployment.status}
+                  </Badge>
+                  <RelativeTime value={deployment.createdAt} fallback="never" />
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-4 py-8 text-sm text-muted-foreground">
+              No rollout summaries yet.
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-dashed px-4 py-4 text-sm text-muted-foreground">
+          {failingProjects > 0
+            ? `${failingProjects} project${failingProjects !== 1 ? "s are" : " is"} currently reporting errors from worker state.`
+            : "All currently reported projects are healthy."}
+        </div>
       </TabsContent>
     </Tabs>
   )
 }
 
-const chartData = [
-  { month: "January", desktop: 186, mobile: 80 },
-  { month: "February", desktop: 305, mobile: 200 },
-  { month: "March", desktop: 237, mobile: 120 },
-  { month: "April", desktop: 73, mobile: 190 },
-  { month: "May", desktop: 209, mobile: 130 },
-  { month: "June", desktop: 214, mobile: 140 },
-]
-
-const chartConfig = {
-  desktop: {
-    label: "Desktop",
-    color: "var(--primary)",
-  },
-  mobile: {
-    label: "Mobile",
-    color: "var(--primary)",
-  },
-} satisfies ChartConfig
-
-function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
+function TableCellViewer({ item }: { item: ServiceTableItem }) {
   const isMobile = useIsMobile()
 
   return (
     <Drawer direction={isMobile ? "bottom" : "right"}>
       <DrawerTrigger asChild>
-        <Button variant="link" className="text-foreground w-fit px-0 text-left">
+        <Button variant="link" className="text-foreground h-auto w-fit px-0 text-left">
           {item.service}
         </Button>
       </DrawerTrigger>
       <DrawerContent>
         <DrawerHeader className="gap-1">
           <DrawerTitle>{item.service}</DrawerTitle>
-          <DrawerDescription>
-            Service details and deployment information
-          </DrawerDescription>
+          <DrawerDescription>{item.description}</DrawerDescription>
         </DrawerHeader>
-        <div className="flex flex-col gap-4 overflow-y-auto px-4 text-sm">
-          {!isMobile && (
-            <>
-              <ChartContainer config={chartConfig}>
-                <AreaChart
-                  accessibilityLayer
-                  data={chartData}
-                  margin={{
-                    left: 0,
-                    right: 10,
-                  }}
-                >
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="month"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) => value.slice(0, 3)}
-                    hide
-                  />
-                  <ChartTooltip
-                    cursor={false}
-                    content={<ChartTooltipContent indicator="dot" />}
-                  />
-                  <Area
-                    dataKey="mobile"
-                    type="natural"
-                    fill="var(--color-mobile)"
-                    fillOpacity={0.6}
-                    stroke="var(--color-mobile)"
-                    stackId="a"
-                  />
-                  <Area
-                    dataKey="desktop"
-                    type="natural"
-                    fill="var(--color-desktop)"
-                    fillOpacity={0.4}
-                    stroke="var(--color-desktop)"
-                    stackId="a"
-                  />
-                </AreaChart>
-              </ChartContainer>
-              <Separator />
-              <div className="grid gap-2">
-                <div className="flex gap-2 leading-none font-medium">
-                  Requests trending up by 5.2% this month{" "}
-                  <TrendingUp className="size-4" />
-                </div>
-                <div className="text-muted-foreground">
-                  Showing request volume for the last 6 months.
-                </div>
+        <div className="grid gap-4 overflow-y-auto px-4 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <InfoCard label="Status" value={item.status} />
+            <InfoCard label="Type" value={item.type} />
+            <InfoCard label="Region" value={item.region} />
+            <InfoCard
+              label="Containers"
+              value={`${item.instances}/${item.desiredInstances}`}
+            />
+            <InfoCard label="Reserved CPU" value={item.reservedCpu} />
+            <InfoCard label="Reserved Memory" value={item.reservedMemory} />
+            <InfoCard label="Ports" value={item.ports} />
+            <InfoCard label="Managed By" value={item.deployedBy} />
+          </div>
+
+          {item.image && (
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="text-muted-foreground text-xs uppercase tracking-wide">
+                Container image
               </div>
-              <Separator />
-            </>
+              <div className="mt-1 font-medium">{item.image}</div>
+            </div>
           )}
-          <form className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3">
-              <Label htmlFor="service">Service Name</Label>
-              <Input id="service" defaultValue={item.service} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-3">
-                <Label htmlFor="type">Type</Label>
-                <Select defaultValue={item.type}>
-                  <SelectTrigger id="type" className="w-full">
-                    <SelectValue placeholder="Select a type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Website">Website</SelectItem>
-                    <SelectItem value="Game Server">Game Server</SelectItem>
-                    <SelectItem value="API">API</SelectItem>
-                    <SelectItem value="Worker">Worker</SelectItem>
-                    <SelectItem value="Cron Job">Cron Job</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-3">
-                <Label htmlFor="status">Status</Label>
-                <Select defaultValue={item.status}>
-                  <SelectTrigger id="status" className="w-full">
-                    <SelectValue placeholder="Select a status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Running">Running</SelectItem>
-                    <SelectItem value="Stopped">Stopped</SelectItem>
-                    <SelectItem value="Deploying">Deploying</SelectItem>
-                    <SelectItem value="Error">Error</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-3">
-                <Label htmlFor="region">Region</Label>
-                <Input id="region" defaultValue={item.region} />
-              </div>
-              <div className="flex flex-col gap-3">
-                <Label htmlFor="uptime">Uptime</Label>
-                <Input id="uptime" defaultValue={item.uptime} readOnly />
-              </div>
-            </div>
-            <div className="flex flex-col gap-3">
-              <Label htmlFor="deployedBy">Deployed By</Label>
-              <Select defaultValue={item.deployedBy}>
-                <SelectTrigger id="deployedBy" className="w-full">
-                  <SelectValue placeholder="Select a deployer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Eddie Lake">Eddie Lake</SelectItem>
-                  <SelectItem value="Jamik Tashpulatov">
-                    Jamik Tashpulatov
-                  </SelectItem>
-                  <SelectItem value="Emily Whalen">Emily Whalen</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </form>
+
+          {item.lastError && (
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>Last worker error</AlertTitle>
+              <AlertDescription>{item.lastError}</AlertDescription>
+            </Alert>
+          )}
         </div>
         <DrawerFooter>
-          <Button>Save Changes</Button>
+          <Button asChild>
+            <Link to="/projects/$projectId" params={{ projectId: item.projectId }}>
+              Open Project
+            </Link>
+          </Button>
+          {item.url && (
+            <Button variant="outline" asChild>
+              <a href={item.url} target="_blank" rel="noreferrer">
+                Open Project URL
+              </a>
+            </Button>
+          )}
           <DrawerClose asChild>
             <Button variant="outline">Done</Button>
           </DrawerClose>
@@ -593,4 +610,31 @@ function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
       </DrawerContent>
     </Drawer>
   )
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-3">
+      <div className="text-muted-foreground text-xs uppercase tracking-wide">
+        {label}
+      </div>
+      <div className="mt-1 font-medium">{value}</div>
+    </div>
+  )
+}
+
+function StatusIcon({ status }: { status: ServiceTableItem["status"] }) {
+  if (status === "Running") {
+    return <CheckCircle2 className="fill-green-500 dark:fill-green-400" />
+  }
+
+  if (status === "Deploying") {
+    return <Loader2 className="animate-spin text-yellow-500" />
+  }
+
+  if (status === "Error") {
+    return <XCircle className="text-red-500" />
+  }
+
+  return <Server className="text-muted-foreground" />
 }

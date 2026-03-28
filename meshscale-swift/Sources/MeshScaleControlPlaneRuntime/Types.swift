@@ -1,19 +1,12 @@
 import Foundation
+import MeshScaleStore
 
 // MARK: - Latency Sensitivity
 
-public enum LatencySensitivity: Codable, Sendable {
+public enum LatencySensitivity: String, Codable, Sendable {
     case high    // Must be co-located with dependencies
     case medium  // Prefer co-location but not required
     case low     // Can be anywhere
-}
-
-// MARK: - Worker Types
-
-public enum WorkerType: String, Codable, Sendable {
-    case general        // APIs, frontends, workers
-    case databaseHeavy  // Databases (high CPU/RAM/disk)
-    case compute        // CPU-intensive tasks
 }
 
 // MARK: - Environment
@@ -31,7 +24,7 @@ public enum Environment {
 
 // MARK: - Resource Status
 
-public enum ResourceStatus: String, Codable {
+public enum ResourceStatus: String, Codable, Sendable {
     case pending
     case provisioning
     case running
@@ -119,11 +112,13 @@ public enum ReclaimPolicy {
 
 /// High-level kind of resource. This is derived from which
 /// resource protocol a type conforms to (database, HTTPService, etc.).
-public enum ResourceKind: String, Codable, Sendable {
+public enum ResourceKind: String, Codable, Equatable, Sendable {
     case database
     case cache
     case httpService
     case webService
+    case meshscaleDashboard
+    case netbirdDashboard
     case backgroundWorker
     case staticSite
     case objectStorage
@@ -132,7 +127,7 @@ public enum ResourceKind: String, Codable, Sendable {
 
 /// Desired resource description extracted from user `Resource` structs.
 /// This is the control plane's generic model, independent of Docker/Kubernetes.
-public struct DesiredResourceSpec: Codable, Sendable {
+public struct DesiredResourceSpec: Codable, Equatable, Sendable {
     public let name: String
     public let kind: ResourceKind
     public let cpu: Int
@@ -198,7 +193,7 @@ public enum ShardingStrategy {
 
 // MARK: - Metrics
 
-public struct ResourceMetrics {
+public struct ResourceMetrics: Codable, Sendable {
     public let cpu: Double  // 0.0 to 1.0
     public let memory: Double  // 0.0 to 1.0
     public let requestsPerSecond: Double
@@ -226,7 +221,7 @@ public struct ResourceMetrics {
     }
 }
 
-public struct ResourceHealth {
+public struct ResourceHealth: Codable, Sendable {
     public let status: ResourceStatus
     public let avgResponseTime: TimeInterval
     public let currentReplicas: Int

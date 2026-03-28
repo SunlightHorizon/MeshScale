@@ -1,11 +1,9 @@
 import * as React from "react"
 import { Link } from "@tanstack/react-router"
 import {
-  Camera,
   BarChart3,
   LayoutDashboard,
   Database,
-  FileText,
   FileType,
   Folder,
   HelpCircle,

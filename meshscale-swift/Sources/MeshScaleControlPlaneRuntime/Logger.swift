@@ -1,6 +1,6 @@
 import Foundation
 
-public class Logger {
+public final class Logger: @unchecked Sendable {
     private let logFile: URL
     private let fileHandle: FileHandle?
     
@@ -9,7 +9,7 @@ public class Logger {
         
         // Create log file if it doesn't exist
         if !FileManager.default.fileExists(atPath: logFile.path) {
-            FileManager.default.createFile(atPath: logFile.path, contents: nil)
+            _ = FileManager.default.createFile(atPath: logFile.path, contents: nil)
         }
         
         self.fileHandle = try? FileHandle(forWritingTo: logFile)
@@ -29,8 +29,7 @@ public class Logger {
             fileHandle?.write(data)
         }
         
-        // Also print to console for debugging
-        print(logMessage, terminator: "")
-        fflush(stdout)
+        // Also print to console for debugging.
+        FileHandle.standardOutput.write(Data(logMessage.utf8))
     }
 }

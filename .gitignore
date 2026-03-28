@@ -1,0 +1,9 @@
+.DS_Store
+
+# Local MeshScale runtime state
+.meshscale/*
+!.meshscale/linux-node-entrypoint.sh
+
+# Local Swift build outputs used for MeshScale toolchain/bootstrap work
+meshscale-swift/.build-fdb/
+meshscale-swift/.build-linux/

@@ -1,0 +1,54 @@
+{
+  "domain": "myapp.local",
+  "resources": [
+    {
+      "cpu": 2,
+      "env": {
+        "POSTGRES_DB": "app_db",
+        "POSTGRES_PASSWORD": "meshscale-dev-password",
+        "POSTGRES_USER": "meshscale"
+      },
+      "image": "postgres:16-alpine",
+      "kind": "database",
+      "latencySensitivity": "high",
+      "memoryGB": 4,
+      "name": "app-db",
+      "ports": [
+        5432
+      ],
+      "replicas": 1,
+      "storageGB": 20
+    },
+    {
+      "cpu": 1,
+      "env": {},
+      "image": "redis:7-alpine",
+      "kind": "cache",
+      "latencySensitivity": "high",
+      "memoryGB": 1,
+      "name": "app-cache",
+      "ports": [
+        6379
+      ],
+      "replicas": 1,
+      "storageGB": null
+    },
+    {
+      "cpu": 1,
+      "env": {
+        "PORT": "8080",
+        "REDIS_URL": "redis://app-cache:6379"
+      },
+      "image": "nginxdemos/hello",
+      "kind": "httpService",
+      "latencySensitivity": "medium",
+      "memoryGB": 1,
+      "name": "api",
+      "ports": [
+        8080
+      ],
+      "replicas": 1,
+      "storageGB": null
+    }
+  ]
+}

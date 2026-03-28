@@ -20,7 +20,7 @@ extension MeshScaleCLI {
             print("MeshScale Authentication")
             print("========================\n")
             
-            print("Enter control plane URL (e.g., http://localhost:8080):")
+            print("Enter control plane URL (e.g., http://100.64.0.10:8080 over NetBird):")
             guard let url = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !url.isEmpty else {
                 throw ExitCode.failure

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import {
+  Boxes,
   Globe,
   Gamepad2,
   Code2,
@@ -25,12 +26,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { RelativeTime } from "@/components/relative-time"
 import type { Project, ProjectType, ProjectStatus } from "../data"
 
 const typeConfig: Record<
   ProjectType,
   { icon: React.ElementType; label: string; color: string }
 > = {
+  project: {
+    icon: Boxes,
+    label: "Project",
+    color: "text-sky-600 bg-sky-500/10",
+  },
   website: {
     icon: Globe,
     label: "Website",
@@ -92,6 +99,7 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
           const type = typeConfig[project.type]
           const status = statusConfig[project.status]
           const TypeIcon = type.icon
+          const appCount = project.appCount ?? project.apps?.length ?? 0
 
           return (
             <Card
@@ -177,60 +185,47 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
                   </div>
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <Zap className="size-3 shrink-0" />
-                    <span>{project.uptime} uptime</span>
+                    <span>{project.uptime}</span>
                   </div>
                 </div>
 
-                {/* Resource usage */}
-                {project.status === "running" && (
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>CPU</span>
-                      <span className="font-medium tabular-nums text-foreground">
-                        {project.cpu}%
-                      </span>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-md border bg-muted/30 p-2">
+                    <div className="text-muted-foreground">Apps</div>
+                    <div className="mt-1 font-medium tabular-nums">
+                      {appCount}
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          project.cpu > 80
-                            ? "bg-red-500"
-                            : project.cpu > 60
-                              ? "bg-yellow-500"
-                              : "bg-green-500"
-                        }`}
-                        style={{ width: `${project.cpu}%` }}
-                      />
+                  </div>
+                  <div className="rounded-md border bg-muted/30 p-2">
+                    <div className="text-muted-foreground">Containers</div>
+                    <div className="mt-1 font-medium tabular-nums">
+                      {project.instances}/{project.desiredInstances ?? project.instances}
                     </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Memory</span>
-                      <span className="font-medium tabular-nums text-foreground">
-                        {project.memory}%
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          project.memory > 80
-                            ? "bg-red-500"
-                            : project.memory > 60
-                              ? "bg-yellow-500"
-                              : "bg-blue-500"
-                        }`}
-                        style={{ width: `${project.memory}%` }}
-                      />
-                    </div>
+                  </div>
+                </div>
+
+                {project.image && (
+                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Image:{" "}
+                    <span className="font-medium text-foreground">{project.image}</span>
+                  </div>
+                )}
+
+                {project.lastError && (
+                  <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+                    {project.lastError}
                   </div>
                 )}
 
                 {/* Footer */}
                 <div className="mt-auto flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
                   <span>
-                    {project.instances > 0
-                      ? `${project.instances} instance${project.instances !== 1 ? "s" : ""}`
-                      : "No instances"}
+                    {appCount} app{appCount !== 1 ? "s" : ""}
                   </span>
-                  <span>Deployed {project.lastDeployed}</span>
+                  <span>
+                    Deployed{" "}
+                    <RelativeTime value={project.lastDeployedAt} fallback="never" />
+                  </span>
                 </div>
 
                 {/* View button */}
