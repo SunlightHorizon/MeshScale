@@ -72,6 +72,8 @@ struct MeshScaleToolchainArtifact: Codable {
     let url: String
     let sha256: String?
     let executables: [String]?
+    let component: String?
+    let installSubpath: String?
 }
 
 struct ResolvedToolchainExecutable {
@@ -150,11 +152,16 @@ struct ToolchainManager: @unchecked Sendable {
         let arch = currentArchitectureIdentifier()
 
         for role in roles {
-            guard let artifact = manifest.artifacts.first(where: {
+            let matchingArtifacts = manifest.artifacts.filter {
                 $0.version == version &&
                 $0.platform == platform &&
                 $0.arch == arch &&
                 $0.role == role.rawValue
+            }
+
+            guard let binaryArtifact = matchingArtifacts.first(where: {
+                let component = $0.component?.lowercased() ?? "binary"
+                return component == "binary"
             }) else {
                 throw ToolchainManagerError.unsupportedPlatform(
                     role: role,
@@ -164,7 +171,19 @@ struct ToolchainManager: @unchecked Sendable {
                 )
             }
 
-            try installArtifact(artifact, for: role)
+            let root = toolchainRoot(version: version, role: role)
+            try installArtifact(binaryArtifact, to: root)
+
+            let componentArtifacts = matchingArtifacts.filter {
+                let component = $0.component?.lowercased() ?? "binary"
+                return component != "binary"
+            }
+
+            for artifact in componentArtifacts {
+                let componentName = artifact.installSubpath ?? artifact.component ?? UUID().uuidString
+                let destination = root.appendingPathComponent(componentName, isDirectory: true)
+                try installArtifact(artifact, to: destination)
+            }
         }
 
         try saveSelection(
@@ -251,10 +270,7 @@ struct ToolchainManager: @unchecked Sendable {
         return trimmed
     }
 
-    private func installArtifact(
-        _ artifact: MeshScaleToolchainArtifact,
-        for role: MeshScaleToolchainRole
-    ) throws {
+    private func installArtifact(_ artifact: MeshScaleToolchainArtifact, to destinationURL: URL) throws {
         guard let artifactURL = URL(string: artifact.url) else {
             throw ToolchainManagerError.invalidArtifactURL(artifact.url)
         }
@@ -263,7 +279,6 @@ struct ToolchainManager: @unchecked Sendable {
             .appendingPathComponent("meshscale-toolchain-\(UUID().uuidString)", isDirectory: true)
         let archiveURL = temporaryRoot.appendingPathComponent("artifact.tar.gz")
         let extractionURL = temporaryRoot.appendingPathComponent("extracted", isDirectory: true)
-        let destinationURL = toolchainRoot(version: artifact.version, role: role)
 
         try fileManager.createDirectory(at: extractionURL, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryRoot) }

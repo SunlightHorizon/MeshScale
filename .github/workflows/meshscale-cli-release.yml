@@ -79,19 +79,29 @@ jobs:
           swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleControlPlane
           swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleWorker
 
-      - name: Package MeshScale binaries
+      - name: Package MeshScale binaries and control plane dependencies
         working-directory: meshscale-swift
         run: |
           set -euo pipefail
           BIN_DIR="$(swift build --build-path "${SWIFT_BUILD_PATH}" -c release --show-bin-path)"
           DIST_DIR="$PWD/release-dist"
           ASSET_DIR="$PWD/release-assets"
+          TOOLCHAIN_ROOT="$(dirname "$(dirname "$(dirname "$(realpath "$(command -v swift)")")")")"
+          LIB_SEARCH_DIRS=()
+          for dir in /usr/lib /usr/lib64 /lib /lib64; do
+            if [ -d "$dir" ]; then
+              LIB_SEARCH_DIRS+=("$dir")
+            fi
+          done
 
           rm -rf "$DIST_DIR" "$ASSET_DIR"
           mkdir -p \
             "$DIST_DIR/cli" \
             "$DIST_DIR/controlplane" \
             "$DIST_DIR/worker" \
+            "$DIST_DIR/swift-toolchain" \
+            "$DIST_DIR/foundationdb/include/foundationdb" \
+            "$DIST_DIR/foundationdb/lib" \
             "$ASSET_DIR"
 
           test -f "$BIN_DIR/MeshScaleCLI"
@@ -102,10 +112,18 @@ jobs:
           cp "$BIN_DIR/MeshScaleWorker" "$DIST_DIR/worker/MeshScaleWorker"
 
           ls -la "$BIN_DIR"
+          rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/swift-toolchain/"
+          rsync -a /usr/include/foundationdb/ "$DIST_DIR/foundationdb/include/foundationdb/"
+          find "${LIB_SEARCH_DIRS[@]}" -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 | \
+            while IFS= read -r -d '' lib; do
+              cp -a "$lib" "$DIST_DIR/foundationdb/lib/"
+            done
 
           tar -C "$DIST_DIR/cli" -czf "$ASSET_DIR/meshscale-cli-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" meshscale
           tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" controlplane
           tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-worker-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" worker
+          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-swift-toolchain-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" swift-toolchain
+          tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-foundationdb-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" foundationdb
 
       - name: Upload packaged assets
         uses: actions/upload-artifact@v4
@@ -142,24 +160,63 @@ jobs:
           printf '[]\n' > "$ARTIFACTS_JSON"
           GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          for archive in release-assets/meshscale-controlplane-*.tar.gz release-assets/meshscale-worker-*.tar.gz; do
+          for archive in \
+            release-assets/meshscale-controlplane-*.tar.gz \
+            release-assets/meshscale-worker-*.tar.gz \
+            release-assets/meshscale-swift-toolchain-controlplane-*.tar.gz \
+            release-assets/meshscale-foundationdb-controlplane-*.tar.gz; do
             [ -f "$archive" ] || continue
             filename="$(basename "$archive" .tar.gz)"
-            role="$(printf '%s' "$filename" | cut -d- -f2)"
-            platform="$(printf '%s' "$filename" | cut -d- -f3)"
-            arch="$(printf '%s' "$filename" | cut -d- -f4)"
-            checksum="$(sha256sum "$archive" | awk '{print $1}')"
+            role=""
+            component="binary"
+            install_subpath=""
+            executable=""
+            platform=""
+            arch=""
 
-            if [ "$role" = "controlplane" ]; then
-              executable="MeshScaleControlPlane"
-            else
-              executable="MeshScaleWorker"
-            fi
+            case "$filename" in
+              meshscale-controlplane-*)
+                role="controlplane"
+                component="binary"
+                executable="MeshScaleControlPlane"
+                platform="$(printf '%s' "$filename" | cut -d- -f3)"
+                arch="$(printf '%s' "$filename" | cut -d- -f4)"
+                ;;
+              meshscale-worker-*)
+                role="worker"
+                component="binary"
+                executable="MeshScaleWorker"
+                platform="$(printf '%s' "$filename" | cut -d- -f3)"
+                arch="$(printf '%s' "$filename" | cut -d- -f4)"
+                ;;
+              meshscale-swift-toolchain-controlplane-*)
+                role="controlplane"
+                component="swift-toolchain"
+                install_subpath="swift-toolchain"
+                platform="$(printf '%s' "$filename" | cut -d- -f5)"
+                arch="$(printf '%s' "$filename" | cut -d- -f6)"
+                ;;
+              meshscale-foundationdb-controlplane-*)
+                role="controlplane"
+                component="foundationdb"
+                install_subpath="foundationdb"
+                platform="$(printf '%s' "$filename" | cut -d- -f4)"
+                arch="$(printf '%s' "$filename" | cut -d- -f5)"
+                ;;
+              *)
+                echo "Skipping unrecognized archive $archive" >&2
+                continue
+                ;;
+            esac
+
+            checksum="$(sha256sum "$archive" | awk '{print $1}')"
 
             tmp_json="$(mktemp)"
             jq \
               --arg version "$RELEASE_VERSION" \
               --arg role "$role" \
+              --arg component "$component" \
+              --arg installSubpath "$install_subpath" \
               --arg platform "$platform" \
               --arg arch "$arch" \
               --arg url "https://github.com/${REPOSITORY}/releases/download/${RELEASE_VERSION}/$(basename "$archive")" \
@@ -168,11 +225,13 @@ jobs:
               '. + [{
                 version: $version,
                 role: $role,
+                component: $component,
+                installSubpath: (if $installSubpath == "" then null else $installSubpath end),
                 platform: $platform,
                 arch: $arch,
                 url: $url,
                 sha256: $sha256,
-                executables: [$executable]
+                executables: (if $executable == "" then [] else [$executable] end)
               }]' \
               "$ARTIFACTS_JSON" > "$tmp_json"
             mv "$tmp_json" "$ARTIFACTS_JSON"
