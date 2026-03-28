@@ -87,6 +87,12 @@ jobs:
           DIST_DIR="$PWD/release-dist"
           ASSET_DIR="$PWD/release-assets"
           TOOLCHAIN_ROOT="$(python3 -c 'import json, os, shutil, subprocess, sys; info = json.loads(subprocess.check_output(["swiftc", "-print-target-info"], text=True)) if sys.platform == "darwin" else None; runtime_resource_path = info["paths"]["runtimeResourcePath"] if info else None; swift_path = os.path.realpath(shutil.which("swift")) if not info else None; toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_resource_path))) if info else os.path.dirname(os.path.dirname(os.path.dirname(swift_path))); print(toolchain_root)')"
+          LIB_SEARCH_DIRS=()
+          for dir in /usr/lib /usr/lib64 /lib /lib64; do
+            if [ -d "$dir" ]; then
+              LIB_SEARCH_DIRS+=("$dir")
+            fi
+          done
 
           rm -rf "$DIST_DIR" "$ASSET_DIR"
           mkdir -p \
@@ -104,12 +110,13 @@ jobs:
           cp "$BIN_DIR/MeshScaleControlPlane" "$DIST_DIR/controlplane/MeshScaleControlPlane"
           cp "$BIN_DIR/MeshScaleWorker" "$DIST_DIR/worker/MeshScaleWorker"
 
+          ls -la "$BIN_DIR"
           rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/controlplane/swift-toolchain/"
           rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/worker/swift-toolchain/"
 
           rsync -a /usr/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
           rsync -a /usr/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
-          find /usr/lib /usr/lib64 /lib /lib64 -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 2>/dev/null | \
+          find "${LIB_SEARCH_DIRS[@]}" -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 | \
             while IFS= read -r -d '' lib; do
               cp -a "$lib" "$DIST_DIR/controlplane/foundationdb/lib/"
               cp -a "$lib" "$DIST_DIR/worker/foundationdb/lib/"
