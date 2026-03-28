@@ -325,7 +325,7 @@ struct ToolchainManager: @unchecked Sendable {
 
     private func download(url: URL) throws -> Data {
         let semaphore = DispatchSemaphore(value: 0)
-        let session = URLSession(configuration: .ephemeral)
+        let session = URLSession.shared
 
         final class Box: @unchecked Sendable {
             var data: Data?
