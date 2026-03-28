@@ -22,12 +22,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
-            platform: darwin
-            arch: arm64
           - runner: ubuntu-24.04
             platform: linux
             arch: amd64
+            fdb_arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            fdb_arch: aarch64
 
     env:
       RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
@@ -41,25 +43,18 @@ jobs:
         with:
           swift-version: "6.2"
 
-      - name: Install FoundationDB dependencies on macOS
-        if: matrix.platform == 'darwin'
-        run: |
-          brew update
-          brew install foundationdb
-
       - name: Install FoundationDB dependencies on Linux
-        if: matrix.platform == 'linux'
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ca-certificates curl
           curl -L --retry 5 --retry-delay 2 \
-            -o /tmp/foundationdb-clients_7.3.69-1_amd64.deb \
-            https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients_7.3.69-1_amd64.deb
+            -o /tmp/foundationdb-clients_7.3.69-1_${{ matrix.fdb_arch }}.deb \
+            https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients_7.3.69-1_${{ matrix.fdb_arch }}.deb
           curl -L --retry 5 --retry-delay 2 \
-            -o /tmp/foundationdb-server_7.3.69-1_amd64.deb \
-            https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-server_7.3.69-1_amd64.deb
-          sudo dpkg -i /tmp/foundationdb-clients_7.3.69-1_amd64.deb /tmp/foundationdb-server_7.3.69-1_amd64.deb
+            -o /tmp/foundationdb-server_7.3.69-1_${{ matrix.fdb_arch }}.deb \
+            https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-server_7.3.69-1_${{ matrix.fdb_arch }}.deb
+          sudo dpkg -i /tmp/foundationdb-clients_7.3.69-1_${{ matrix.fdb_arch }}.deb /tmp/foundationdb-server_7.3.69-1_${{ matrix.fdb_arch }}.deb
 
       - name: Build MeshScale binaries
         working-directory: meshscale-swift
@@ -113,20 +108,13 @@ jobs:
           rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/controlplane/swift-toolchain/"
           rsync -a "$TOOLCHAIN_ROOT/" "$DIST_DIR/worker/swift-toolchain/"
 
-          if [ "${{ matrix.platform }}" = "darwin" ]; then
-            rsync -a /usr/local/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
-            rsync -a /usr/local/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
-            cp -a /usr/local/lib/libfdb_c* "$DIST_DIR/controlplane/foundationdb/lib/"
-            cp -a /usr/local/lib/libfdb_c* "$DIST_DIR/worker/foundationdb/lib/"
-          else
-            rsync -a /usr/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
-            rsync -a /usr/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
-            find /usr/lib /usr/lib64 /lib /lib64 -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 2>/dev/null | \
-              while IFS= read -r -d '' lib; do
-                cp -a "$lib" "$DIST_DIR/controlplane/foundationdb/lib/"
-                cp -a "$lib" "$DIST_DIR/worker/foundationdb/lib/"
-              done
-          fi
+          rsync -a /usr/include/foundationdb/ "$DIST_DIR/controlplane/foundationdb/include/foundationdb/"
+          rsync -a /usr/include/foundationdb/ "$DIST_DIR/worker/foundationdb/include/foundationdb/"
+          find /usr/lib /usr/lib64 /lib /lib64 -maxdepth 2 \( -name 'libfdb_c.so' -o -name 'libfdb_c.so.*' \) -print0 2>/dev/null | \
+            while IFS= read -r -d '' lib; do
+              cp -a "$lib" "$DIST_DIR/controlplane/foundationdb/lib/"
+              cp -a "$lib" "$DIST_DIR/worker/foundationdb/lib/"
+            done
 
           tar -C "$DIST_DIR/cli" -czf "$ASSET_DIR/meshscale-cli-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" meshscale
           tar -C "$DIST_DIR" -czf "$ASSET_DIR/meshscale-toolchain-controlplane-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" controlplane

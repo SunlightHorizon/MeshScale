@@ -20,9 +20,10 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.1"),
-        .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.21.1", traits: []),
+        .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.21.1"),
         .package(url: "https://github.com/hummingbird-project/hummingbird-websocket.git", from: "2.6.0"),
-        .package(url: "https://github.com/apple/swift-log.git", from: "1.10.1")
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.10.1"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.97.1")
     ],
     targets: [
         // Executables
@@ -46,7 +47,8 @@ let package = Package(
                 "MeshScaleWorkerRuntime",
                 "MeshScaleStore",
                 .product(name: "Hummingbird", package: "hummingbird"),
-                .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket")
+                .product(name: "HummingbirdWebSocket", package: "hummingbird-websocket"),
+                .product(name: "NIOCore", package: "swift-nio")
             ],
             linkerSettings: [
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/usr/local/lib"], .when(platforms: [.macOS]))
