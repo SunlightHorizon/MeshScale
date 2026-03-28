@@ -34,6 +34,7 @@ jobs:
     env:
       RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
       SWIFT_VERSION: 6.2.1
+      SWIFT_BUILD_PATH: .build-release
 
     steps:
       - name: Check out repository
@@ -74,16 +75,15 @@ jobs:
         working-directory: meshscale-swift
         run: |
           set -euo pipefail
-          swift build -c release \
-            --product MeshScaleCLI \
-            --product MeshScaleControlPlane \
-            --product MeshScaleWorker
+          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleCLI
+          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleControlPlane
+          swift build --build-path "${SWIFT_BUILD_PATH}" -c release --product MeshScaleWorker
 
       - name: Package MeshScale CLI and toolchains
         working-directory: meshscale-swift
         run: |
           set -euo pipefail
-          BIN_DIR="$(swift build -c release --show-bin-path)"
+          BIN_DIR="$(swift build --build-path "${SWIFT_BUILD_PATH}" -c release --show-bin-path)"
           DIST_DIR="$PWD/release-dist"
           ASSET_DIR="$PWD/release-assets"
           TOOLCHAIN_ROOT="$(python3 -c 'import json, os, shutil, subprocess, sys; info = json.loads(subprocess.check_output(["swiftc", "-print-target-info"], text=True)) if sys.platform == "darwin" else None; runtime_resource_path = info["paths"]["runtimeResourcePath"] if info else None; swift_path = os.path.realpath(shutil.which("swift")) if not info else None; toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_resource_path))) if info else os.path.dirname(os.path.dirname(os.path.dirname(swift_path))); print(toolchain_root)')"
@@ -97,6 +97,9 @@ jobs:
             "$DIST_DIR/worker/foundationdb/lib" \
             "$ASSET_DIR"
 
+          test -f "$BIN_DIR/MeshScaleCLI"
+          test -f "$BIN_DIR/MeshScaleControlPlane"
+          test -f "$BIN_DIR/MeshScaleWorker"
           cp "$BIN_DIR/MeshScaleCLI" "$DIST_DIR/cli/meshscale"
           cp "$BIN_DIR/MeshScaleControlPlane" "$DIST_DIR/controlplane/MeshScaleControlPlane"
           cp "$BIN_DIR/MeshScaleWorker" "$DIST_DIR/worker/MeshScaleWorker"
