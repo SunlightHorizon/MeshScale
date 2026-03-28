@@ -33,15 +33,29 @@ jobs:
 
     env:
       RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      SWIFT_VERSION: 6.2.1
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up Swift
+        if: matrix.arch == 'amd64'
         uses: swift-actions/setup-swift@v2
         with:
-          swift-version: "6.2"
+          swift-version: ${{ env.SWIFT_VERSION }}
+
+      - name: Set up Swift on Linux ARM64
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          SWIFT_BASE_URL="https://download.swift.org/swift-${SWIFT_VERSION}-release/ubuntu2404-aarch64/swift-${SWIFT_VERSION}-RELEASE"
+          SWIFT_ARCHIVE="swift-${SWIFT_VERSION}-RELEASE-ubuntu24.04-aarch64.tar.gz"
+          curl -L --retry 5 --retry-delay 2 -o "/tmp/${SWIFT_ARCHIVE}" "${SWIFT_BASE_URL}/${SWIFT_ARCHIVE}"
+          sudo rm -rf /opt/swift-${SWIFT_VERSION}-arm64
+          sudo mkdir -p /opt/swift-${SWIFT_VERSION}-arm64
+          sudo tar -xzf "/tmp/${SWIFT_ARCHIVE}" -C /opt/swift-${SWIFT_VERSION}-arm64 --strip-components=1
+          echo "/opt/swift-${SWIFT_VERSION}-arm64/usr/bin" >> "$GITHUB_PATH"
 
       - name: Install FoundationDB dependencies on Linux
         run: |
