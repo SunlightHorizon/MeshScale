@@ -86,25 +86,7 @@ jobs:
           BIN_DIR="$(swift build -c release --show-bin-path)"
           DIST_DIR="$PWD/release-dist"
           ASSET_DIR="$PWD/release-assets"
-          TOOLCHAIN_ROOT="$(
-            python3 - <<'PY'
-            import json
-            import os
-            import shutil
-            import subprocess
-            import sys
-
-            if sys.platform == "darwin":
-                info = json.loads(subprocess.check_output(["swiftc", "-print-target-info"], text=True))
-                runtime_resource_path = info["paths"]["runtimeResourcePath"]
-                toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_resource_path)))
-            else:
-                swift_path = os.path.realpath(shutil.which("swift"))
-                toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(swift_path)))
-
-            print(toolchain_root)
-            PY
-          )"
+          TOOLCHAIN_ROOT="$(python3 -c 'import json, os, shutil, subprocess, sys; info = json.loads(subprocess.check_output(["swiftc", "-print-target-info"], text=True)) if sys.platform == "darwin" else None; runtime_resource_path = info["paths"]["runtimeResourcePath"] if info else None; swift_path = os.path.realpath(shutil.which("swift")) if not info else None; toolchain_root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_resource_path))) if info else os.path.dirname(os.path.dirname(os.path.dirname(swift_path))); print(toolchain_root)')"
 
           rm -rf "$DIST_DIR" "$ASSET_DIR"
           mkdir -p \
@@ -159,47 +141,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import datetime
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-
-          version = os.environ["RELEASE_VERSION"]
-          repository = os.environ["REPOSITORY"]
-          assets_dir = Path("release-assets")
-
-          artifacts = []
-          for archive in sorted(assets_dir.glob("meshscale-toolchain-*.tar.gz")):
-            parts = archive.name.removesuffix(".tar.gz").split("-")
-            role = parts[2]
-            platform = parts[3]
-            arch = parts[4]
-            checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-            executable = "MeshScaleControlPlane" if role == "controlplane" else "MeshScaleWorker"
-            artifacts.append(
-              {
-                "version": version,
-                "role": role,
-                "platform": platform,
-                "arch": arch,
-                "url": f"https://github.com/{repository}/releases/download/{version}/{archive.name}",
-                "sha256": checksum,
-                "executables": [executable],
-              }
-            )
-
-          manifest = {
-            "schemaVersion": 1,
-            "latestVersion": version,
-            "generatedAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-            "artifacts": artifacts,
-          }
-
-          output_path = assets_dir / "meshscale-toolchains.json"
-          output_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-          PY
+          python3 -c 'import datetime, hashlib, json, os; from pathlib import Path; version = os.environ["RELEASE_VERSION"]; repository = os.environ["REPOSITORY"]; assets_dir = Path("release-assets"); artifacts = [{"version": version, "role": archive.name.removesuffix(".tar.gz").split("-")[2], "platform": archive.name.removesuffix(".tar.gz").split("-")[3], "arch": archive.name.removesuffix(".tar.gz").split("-")[4], "url": f"https://github.com/{repository}/releases/download/{version}/{archive.name}", "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(), "executables": ["MeshScaleControlPlane" if archive.name.removesuffix(".tar.gz").split("-")[2] == "controlplane" else "MeshScaleWorker"]} for archive in sorted(assets_dir.glob("meshscale-toolchain-*.tar.gz"))]; manifest = {"schemaVersion": 1, "latestVersion": version, "generatedAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "artifacts": artifacts}; (assets_dir / "meshscale-toolchains.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")'
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
