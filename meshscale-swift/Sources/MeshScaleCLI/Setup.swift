@@ -493,6 +493,11 @@ struct SetupManager: @unchecked Sendable {
             if current.installed {
                 continue
             }
+            if dependency == .netbird {
+                throw SetupError.installFailed(
+                    "NetBird must already be installed before running 'meshscale setup'. Install it manually, then rerun setup."
+                )
+            }
             try install(dependency: dependency)
         }
     }
@@ -511,7 +516,7 @@ struct SetupManager: @unchecked Sendable {
             return MeshScaleDependencyStatus(
                 dependency: dependency,
                 installed: false,
-                detail: "Install with 'meshscale setup'."
+                detail: "Install NetBird manually before running 'meshscale setup'."
             )
 
         case .foundationDB:
@@ -548,6 +553,7 @@ struct SetupManager: @unchecked Sendable {
     }
 
     private func install(dependency: MeshScaleSystemDependency) throws {
+        print("Installing \(dependency.displayName)...")
         for command in try installCommands(for: dependency) {
             try runInteractiveShell(command)
         }
@@ -570,8 +576,30 @@ struct SetupManager: @unchecked Sendable {
         #elseif os(Linux)
         switch dependency {
         case .netbird:
+            if commandSucceeds(["sh", "-lc", "command -v apt-get >/dev/null 2>&1"]) {
+                return [
+                    "curl -fsSL https://pkgs.netbird.io/install.sh | sh",
+                    "netbird service install || true",
+                    "netbird service start",
+                ]
+            }
+
             return [
-                "curl -fsSL https://pkgs.netbird.io/install.sh | sh",
+                """
+                cat >/etc/yum.repos.d/netbird.repo <<'EOF'
+                [netbird]
+                name=netbird
+                baseurl=https://pkgs.netbird.io/yum/
+                enabled=1
+                gpgcheck=0
+                gpgkey=https://pkgs.netbird.io/yum/repodata/repomd.xml.key
+                repo_gpgcheck=0
+                EOF
+                """,
+                "dnf install -y dnf-plugins-core",
+                "dnf config-manager --add-repo /etc/yum.repos.d/netbird.repo || dnf config-manager addrepo --from-repofile=/etc/yum.repos.d/netbird.repo",
+                "dnf makecache",
+                "dnf install -y netbird",
                 "netbird service install || true",
                 "netbird service start",
             ]
@@ -766,11 +794,12 @@ struct SetupManager: @unchecked Sendable {
         try? fileManager.setAttributes([.posixPermissions: 0o777], ofItemAtPath: dataDirectory.path)
         try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: configDirectory.path)
 
-        let adminURL = "http://127.0.0.1:18080"
-        let managementURL = "http://127.0.0.1:18081"
+        let publicHost = preferredBootstrapNetBirdPublicHost()
+        let adminURL = "http://\(publicHost):18080"
+        let managementURL = "http://\(publicHost):18081"
         let configPath = configDirectory.appendingPathComponent("config.yaml")
         let config = bootstrapNetBirdServerConfig(
-            host: "127.0.0.1",
+            host: publicHost,
             dashboardPort: 18080,
             managementPort: 18081
         )
@@ -788,7 +817,7 @@ struct SetupManager: @unchecked Sendable {
             PortBinding(hostPort: 18081, containerPort: 80),
         ]
         let dashboardEnvironment = bootstrapNetBirdDashboardEnvironment(
-            host: "127.0.0.1",
+            host: publicHost,
             dashboardPort: 18080,
             managementPort: 18081
         )
@@ -850,7 +879,8 @@ struct SetupManager: @unchecked Sendable {
             existingSetupKey: existingDetails?.netBirdSetupKey
         )
 
-        print("Local NetBird control plane is available at \(adminURL)")
+        print("NetBird dashboard/admin panel: \(adminURL)")
+        print("NetBird management API: \(managementURL)")
         print("NetBird bootstrap setup key is ready for the local agent.")
 
         return (adminURL: adminURL, managementURL: managementURL, setupKey: setupKey)
@@ -1239,6 +1269,34 @@ struct SetupManager: @unchecked Sendable {
         }
 
         return "127.0.0.1"
+    }
+
+    private func preferredBootstrapNetBirdPublicHost() -> String {
+        let environment = ProcessInfo.processInfo.environment
+        if let configured = environment["MESHCALE_BOOTSTRAP_NETBIRD_PUBLIC_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !configured.isEmpty {
+            return configured
+        }
+
+        if let configured = environment["MESHCALE_BOOTSTRAP_PUBLIC_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !configured.isEmpty {
+            return configured
+        }
+
+        let metadataCandidates = [
+            ["sh", "-lc", "token=$(curl -fsS -m 2 -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 30' 2>/dev/null || true); if [ -n \"$token\" ]; then curl -fsS -m 2 -H \"X-aws-ec2-metadata-token: $token\" http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true; else curl -fsS -m 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true; fi"],
+            ["sh", "-lc", "token=$(curl -fsS -m 2 -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 30' 2>/dev/null || true); if [ -n \"$token\" ]; then curl -fsS -m 2 -H \"X-aws-ec2-metadata-token: $token\" http://169.254.169.254/latest/meta-data/public-hostname 2>/dev/null || true; else curl -fsS -m 2 http://169.254.169.254/latest/meta-data/public-hostname 2>/dev/null || true; fi"],
+        ]
+
+        for command in metadataCandidates {
+            if let output = runQuiet(command).stdout?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !output.isEmpty,
+               output != "127.0.0.1" {
+                return output
+            }
+        }
+
+        return preferredFoundationDBBootstrapHost()
     }
 
     private func isTCPPortAvailable(_ port: Int) -> Bool {

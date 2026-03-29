@@ -337,7 +337,7 @@ public final class NetBirdClient: @unchecked Sendable {
             normalized += "://"
         }
         normalized += components.host?.lowercased() ?? rawValue
-        if let port = components.port {
+        if let port = components.port, !isDefaultPort(port, for: components.scheme) {
             normalized += ":\(port)"
         }
         let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -345,6 +345,17 @@ public final class NetBirdClient: @unchecked Sendable {
             normalized += "/\(path)"
         }
         return normalized
+    }
+
+    private func isDefaultPort(_ port: Int, for scheme: String?) -> Bool {
+        switch scheme?.lowercased() {
+        case "https":
+            return port == 443
+        case "http":
+            return port == 80
+        default:
+            return false
+        }
     }
 }
 
